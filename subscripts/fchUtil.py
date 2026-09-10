@@ -243,16 +243,7 @@ def decompile_fch(fch_path: str) -> dict:
     # 2. player shtats
 
     save_data["stats"] = []
-
-    save_data["known_worlds"] = {}
-    save_data["known_world_keys"] = {}
-    save_data["known_commands"] = {}
-    save_data["enemy_stats"] = []
-    save_data["item_pickup_stats"] = {}
-    save_data["item_craft_stats"] = {}
-    save_data["pickable_stats"] = {}
-    save_data["food_eaten_stats"] = {}
-    save_data["pieces_placed_stats"] = {}
+    save_data["profiles"] = []
 
     for profile_index in range(profile_count):
 
@@ -261,8 +252,6 @@ def decompile_fch(fch_path: str) -> dict:
             pkg.read_float()
             for _ in range(stat_count)
         ]
-
-        save_data["stats"].append(profile_stats)
 
         known_worlds = read_string_float_dictionary(pkg)
 
@@ -293,16 +282,18 @@ def decompile_fch(fch_path: str) -> dict:
         pieces_placed_stats = read_string_float_dictionary(pkg)
 
         # Preserve the existing JSON structure for profile 0, while also keeping all profiles.
-        if profile_index == 0:
-            save_data["known_worlds"] = known_worlds
-            save_data["known_world_keys"] = known_world_keys
-            save_data["known_commands"] = known_commands
-            save_data["enemy_stats"] = enemy_stats
-            save_data["item_pickup_stats"] = item_pickup_stats
-            save_data["item_craft_stats"] = item_craft_stats
-            save_data["pickable_stats"] = pickable_stats
-            save_data["food_eaten_stats"] = food_eaten_stats
-            save_data["pieces_placed_stats"] = pieces_placed_stats
+        save_data["profiles"].append({
+            "stats": profile_stats,
+            "known_worlds": known_worlds,
+            "known_world_keys": known_world_keys,
+            "known_commands": known_commands,
+            "enemy_stats": enemy_stats,
+            "item_pickup_stats": item_pickup_stats,
+            "item_craft_stats": item_craft_stats,
+            "pickable_stats": pickable_stats,
+            "food_eaten_stats": food_eaten_stats,
+            "pieces_placed_stats": pieces_placed_stats
+        })
 
     # 3. first spawn
 
@@ -382,112 +373,312 @@ def compile_fch(json_path: str, fch_path: str):
 
     pkg = BinaryWriter()
 
-    version = save_data["version"]
-    pkg.write_int32(version)
+    # Version
+    pkg.write_int32(46)
 
-    # OLD compiler implementation retained for now, klinoff only wants to update the decompiler first!
-    # klinoff will update this separately after the new format has been successfully decompiled and verified.
+    # Player stat dimensions
+    stat_count = save_data.get("stat_count", 205)
+    profile_count = save_data.get("profile_count", 10)
 
-    pkg.write_int32(len(save_data["stats"]))
+    pkg.write_int32(stat_count)
+    pkg.write_int32(profile_count)
 
-    for stat in save_data["stats"]:
-        pkg.write_float(stat)
+    profiles = save_data.get("profiles", [])
 
-    pkg.write_bool(save_data["first_spawn"])
+    if len(profiles) != profile_count:
+        raise ValueError(
+            f"Expected {profile_count} profiles, "
+            f"but JSON contains {len(profiles)}"
+        )
 
-    pkg.write_int32(len(save_data["worlds"]))
+    for profile_index in range(profile_count):
 
-    for world in save_data["worlds"]:
-        pkg.write_long(world["world_id"])
+        profile = profiles[profile_index]
 
-        pkg.write_bool(world["have_custom_spawn"])
-        pkg.write_vector3(world["spawn_point"])
+        # 205 player stats
+        stats = profile.get("stats", [])
 
-        pkg.write_bool(world["have_logout_point"])
-        pkg.write_vector3(world["logout_point"])
+        if len(stats) != stat_count:
+            raise ValueError(
+                f"Profile {profile_index}: expected "
+                f"{stat_count} stats, got {len(stats)}"
+            )
 
-        if version >= 30:
-            pkg.write_bool(world["have_death_point"])
-            pkg.write_vector3(world["death_point"])
+        for stat in stats:
+            pkg.write_float(stat)
 
-        pkg.write_vector3(world["home_point"])
+        # Known worlds
+        known_worlds = profile.get(
+            "known_worlds",
+            {}
+        )
 
-        has_map_data = world["map_data_hex"] is not None
+        pkg.write_int32(len(known_worlds))
+
+        for k, v in known_worlds.items():
+            pkg.write_string(k)
+            pkg.write_float(v)
+
+        # Known world keys
+        known_world_keys = profile.get(
+            "known_world_keys",
+            {}
+        )
+
+        pkg.write_int32(len(known_world_keys))
+
+        for k, v in known_world_keys.items():
+            pkg.write_string(k)
+            pkg.write_float(v)
+
+        # Known cmds
+        known_commands = profile.get(
+            "known_commands",
+            {}
+        )
+
+        pkg.write_int32(len(known_commands))
+
+        for k, v in known_commands.items():
+            pkg.write_string(k)
+            pkg.write_float(v)
+
+        # Enemy statistics
+        enemy_stats = profile.get(
+            "enemy_stats",
+            []
+        )
+
+        if len(enemy_stats) != 5:
+            raise ValueError(
+                f"Profile {profile_index}: expected "
+                f"5 enemy stat groups, got {len(enemy_stats)}"
+            )
+
+        pkg.write_int32(5)
+
+        for enemy_group in enemy_stats:
+
+            pkg.write_int32(len(enemy_group))
+
+            for k, v in enemy_group.items():
+                pkg.write_string(k)
+                pkg.write_float(v)
+
+        # Item pickup statistics
+        item_pickup_stats = profile.get(
+            "item_pickup_stats",
+            {}
+        )
+
+        pkg.write_int32(len(item_pickup_stats))
+
+        for k, v in item_pickup_stats.items():
+            pkg.write_string(k)
+            pkg.write_float(v)
+
+        # Item craft statistics
+        item_craft_stats = profile.get(
+            "item_craft_stats",
+            {}
+        )
+
+        pkg.write_int32(len(item_craft_stats))
+
+        for k, v in item_craft_stats.items():
+            pkg.write_string(k)
+            pkg.write_float(v)
+
+        # Pickable statistics
+        pickable_stats = profile.get(
+            "pickable_stats",
+            {}
+        )
+
+        pkg.write_int32(len(pickable_stats))
+
+        for k, v in pickable_stats.items():
+            pkg.write_string(k)
+            pkg.write_float(v)
+
+        # Food eaten statistics
+        food_eaten_stats = profile.get(
+            "food_eaten_stats",
+            {}
+        )
+
+        pkg.write_int32(len(food_eaten_stats))
+
+        for k, v in food_eaten_stats.items():
+            pkg.write_string(k)
+            pkg.write_float(v)
+
+        # Pieces placed statistics
+        pieces_placed_stats = profile.get(
+            "pieces_placed_stats",
+            {}
+        )
+
+        pkg.write_int32(len(pieces_placed_stats))
+
+        for k, v in pieces_placed_stats.items():
+            pkg.write_string(k)
+            pkg.write_float(v)
+
+    # First spawn
+    pkg.write_bool(
+        save_data.get("first_spawn", False)
+    )
+
+    worlds = save_data.get(
+        "worlds",
+        []
+    )
+
+    pkg.write_int32(len(worlds))
+
+    for world in worlds:
+
+        pkg.write_long(
+            world["world_id"]
+        )
+
+        # Custom spawn
+        pkg.write_bool(
+            world["have_custom_spawn"]
+        )
+
+        pkg.write_vector3(
+            world["spawn_point"]
+        )
+
+        # Logout point
+        pkg.write_bool(
+            world["have_logout_point"]
+        )
+
+        pkg.write_vector3(
+            world["logout_point"]
+        )
+
+        # Death point
+        pkg.write_bool(
+            world["have_death_point"]
+        )
+
+        pkg.write_vector3(
+            world["death_point"]
+        )
+
+        # Home point
+        pkg.write_vector3(
+            world["home_point"]
+        )
+
+        # Map data
+        has_map_data = (
+            world.get("map_data_hex") is not None # needs to be this otherwise klinoff fucks stuff over
+        )
 
         pkg.write_bool(has_map_data)
 
         if has_map_data:
             pkg.write_byte_array(
-                bytes.fromhex(world["map_data_hex"])
+                bytes.fromhex(
+                    world["map_data_hex"]
+                )
             )
 
-    pkg.write_string(save_data["character_name"])
-    pkg.write_long(save_data["player_id"])
-    pkg.write_string(save_data["start_seed"])
+    # Character info
+    pkg.write_string(
+        save_data.get(
+            "character_name",
+            "Viking"
+        )
+    )
 
-    pkg.write_bool(save_data["used_cheats"])
-    pkg.write_long(save_data["date_created_unix"])
+    pkg.write_long(
+        save_data.get(
+            "player_id",
+            0
+        )
+    )
 
-    pkg.write_int32(len(save_data["known_worlds"]))
+    pkg.write_string(
+        save_data.get(
+            "start_seed",
+            ""
+        )
+    )
 
-    for k, v in save_data["known_worlds"].items():
-        pkg.write_string(k)
-        pkg.write_float(v)
+    # Metadata
+    pkg.write_bool(
+        save_data.get(
+            "used_cheats",
+            False
+        )
+    )
 
-    pkg.write_int32(len(save_data["known_world_keys"]))
+    pkg.write_long(
+        save_data.get(
+            "date_created_unix",
+            0
+        )
+    )
 
-    for k, v in save_data["known_world_keys"].items():
-        pkg.write_string(k)
-        pkg.write_float(v)
+    # Nested Player.Save data
+    player_data_hex = save_data.get(
+        "player_data_hex"
+    )
 
-    pkg.write_int32(len(save_data["known_commands"]))
-
-    for k, v in save_data["known_commands"].items():
-        pkg.write_string(k)
-        pkg.write_float(v)
-
-    if version >= 42:
-        pkg.write_int32(len(save_data["enemy_stats"]))
-
-        for k, v in save_data["enemy_stats"].items():
-            pkg.write_string(k)
-            pkg.write_float(v)
-
-        pkg.write_int32(len(save_data["item_pickup_stats"]))
-
-        for k, v in save_data["item_pickup_stats"].items():
-            pkg.write_string(k)
-            pkg.write_float(v)
-
-        pkg.write_int32(len(save_data["item_craft_stats"]))
-
-        for k, v in save_data["item_craft_stats"].items():
-            pkg.write_string(k)
-            pkg.write_float(v)
-
-    has_player_data = save_data["player_data_hex"] is not None
+    has_player_data = (
+        player_data_hex is not None
+    )
 
     pkg.write_bool(has_player_data)
 
     if has_player_data:
         pkg.write_byte_array(
-            bytes.fromhex(save_data["player_data_hex"])
+            bytes.fromhex(
+                player_data_hex
+            )
         )
 
+    # Generate the package hash
     zpackage_bytes = pkg.get_bytes()
 
-    calculated_hash = hashlib.sha512(zpackage_bytes).digest()
+    calculated_hash = hashlib.sha512(
+        zpackage_bytes
+    ).digest()
 
+    # Outer .fch container
+    #
+    # int package_length
+    # byte[] package
+    # int hash_length
+    # byte[] hash
     file_writer = BinaryWriter()
 
-    file_writer.write_int32(len(zpackage_bytes))
-    file_writer.write_bytes(zpackage_bytes)
+    file_writer.write_int32(
+        len(zpackage_bytes)
+    )
 
-    file_writer.write_int32(len(calculated_hash))
-    file_writer.write_bytes(calculated_hash)
+    file_writer.write_bytes(
+        zpackage_bytes
+    )
+
+    file_writer.write_int32(
+        len(calculated_hash)
+    )
+
+    file_writer.write_bytes(
+        calculated_hash
+    )
 
     with open(fch_path, "wb") as f:
-        f.write(file_writer.get_bytes())
+        f.write(
+            file_writer.get_bytes()
+        )
 
     print(
         f"Successfully compiled and hashed! "
@@ -495,7 +686,6 @@ def compile_fch(json_path: str, fch_path: str):
     )
 
 # CLI, klinoff likey
-
 if __name__ == "__main__":
     if len(sys.argv) < 4:
         print("Valheim Save File Utility")

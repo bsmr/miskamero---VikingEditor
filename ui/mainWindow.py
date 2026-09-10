@@ -10,6 +10,7 @@ from ui.statsTab import StatsTab
 from ui.appearanceTab import AppearanceTab
 from ui.miscTab import MiscTab
 from ui.valheim_detection import is_valheim_running, valheim_warning_message
+from data.info import INFO_TEXT
 
 from subscripts.fchUtil import (
     decompile_fch,
@@ -83,26 +84,14 @@ class MainWindow(QMainWindow):
         self.btn_save_json.clicked.connect(self.save_json_file)
         self.btn_save_save.clicked.connect(self.save_save_file)
 
-        try:
-            with open("info.txt", "r", encoding="utf-8") as f:
-                info_text = f.read()
-
-            msg = QMessageBox(self)
-            msg.setWindowTitle("Information")
-            msg.setText(info_text)
-
-            # Enable clickable links
-            msg.setTextFormat(Qt.TextFormat.RichText)
-            msg.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
-
-            msg.exec()
-
-        except Exception as e:
-            QMessageBox.warning(
-                self,
-                "Info Load Error",
-                f"Could not load info.txt:\n{str(e)}\nPlease read the info.txt file manually for important information!"
-            )
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Information")
+        msg.setText(INFO_TEXT)
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextBrowserInteraction
+        )
+        msg.exec()
 
     def open_save_file(self):
         filename, _ = QFileDialog.getOpenFileName(

@@ -1,3 +1,4 @@
+INFO_TEXT = """
 <h1><b>Valheim Editor v1.0.2</b></h1>
 
 <h3><b>MAKE SURE TO BACKUP YOUR FILES BEFORE USING THIS EDITOR!</b></h3>
@@ -7,6 +8,11 @@ Made by miskamero on
 <a href="https://github.com/miskamero/">GitHub</a>
 </p>
 
-and Licensed under the <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPLv3</a> license.
+<p>
+Licensed under the
+<a href="https://www.gnu.org/licenses/gpl-3.0.en.html">GPLv3</a>
+license.
+</p>
 
 <p>Enjoy :)</p>
+"""

@@ -31,6 +31,51 @@ def load_item_database():
 
 ITEM_HASH_TO_PREFAB = load_item_database()
 
+def int32(value):
+    value &= 0xFFFFFFFF
+
+    if value >= 0x80000000:
+        value -= 0x100000000
+
+    return value
+
+
+def get_stable_hash_code(text):
+    encoded = text.encode("utf-16-le")
+
+    chars = [
+        int.from_bytes(
+            encoded[i:i + 2],
+            "little"
+        )
+        for i in range(0, len(encoded), 2)
+    ]
+
+    num = 5381
+    num2 = num
+    num3 = 0
+
+    while num3 < len(chars) and chars[num3] != 0:
+        num = int32(
+            ((num << 5) + num) ^ chars[num3]
+        )
+
+        if (
+            num3 == len(chars) - 1
+            or chars[num3 + 1] == 0
+        ):
+            break
+
+        num2 = int32(
+            ((num2 << 5) + num2) ^ chars[num3 + 1]
+        )
+
+        num3 += 2
+
+    return int32(
+        num + num2 * 1566083941
+    )
+
 class PlayerDataReader:
     def __init__(self, data: bytes):
         self.stream = io.BytesIO(data)
@@ -144,7 +189,9 @@ class PlayerDataWriter:
         self.stream.write(struct.pack("<i", val))
 
     def write_float(self, val: float):
-        self.stream.write(struct.pack("<f", val))
+        self.stream.write(
+            struct.pack("<f", float(val))
+        )
 
     def write_long(self, val: int):
         self.stream.write(struct.pack("<q", val))
@@ -172,6 +219,13 @@ class PlayerDataWriter:
     def write_byte_array(self, data: bytes):
         self.write_int32(len(data))
         self.stream.write(data)
+
+    def write_num_items(self, value: int):
+        if value < 128:
+            self.write_byte(value)
+        else:
+            self.write_byte((value >> 8) | 0x80)
+            self.write_byte(value & 0xFF)
 
 
 # Helpers! Klinoff needs to clean this up later. Nöfnöf.
@@ -446,27 +500,23 @@ def unpack_player_data_hex(hex_string: str) -> dict:
 
     return out
 
-
-# ============================================================
-# player data compiler
-#
-# Still based on the old format for now. will update this separately after decompilation works.
-# ============================================================
-
 def pack_player_data_hex(data: dict) -> str:
     """
-    Serializes Player data payload dictionary back into binary.
+    Serializes the current Valheim 1.0 Player.Save payload.
 
-    NOTE:
-    This function is NOT yet updated for Valheim 1.0.
-    Decompilation is being updated first.
+    Current format:
+        Player version: 33
+        Inventory version: 109
+        Inventory count: ushort
+        Item format: compact flags + optional fields
     """
 
     pkg = PlayerDataWriter()
 
-    # old format for now
-    pkg.write_int32(data.get("version", 29))
+    # Player version
+    pkg.write_int32(33)
 
+    # Core stats
     pkg.write_float(
         data.get("max_health", 25.0)
     )
@@ -491,76 +541,146 @@ def pack_player_data_hex(data: dict) -> str:
         data.get("guardian_power_cooldown", 0.0)
     )
 
-    pkg.write_int32(
-        data.get("inventory_version", 106)
-    )
+    # Inventory
+    pkg.write_int32(109)
 
     inventory = data.get("inventory", [])
 
-    pkg.write_int32(len(inventory))
+    pkg.write_ushort(len(inventory))
 
     for item in inventory:
 
-        pkg.write_string(
-            item.get("prefab", "")
+        durability = item.get(
+            "durability",
+            100.0
         )
 
-        pkg.write_int32(
-            item.get("stack", 1)
+        durability_raw = int(
+            durability * 100.0
         )
 
-        pkg.write_float(
-            item.get("durability", 100.0)
-        )
+        pkg.write_int32(durability_raw)
 
-        pkg.write_int32(
+        # Grid position + world level
+        pkg.write_byte(
             item.get("grid_x", 0)
         )
 
-        pkg.write_int32(
+        pkg.write_byte(
             item.get("grid_y", 0)
         )
 
-        pkg.write_bool(
-            item.get("equipped", False)
+        pkg.write_byte(
+            item.get("world_level", 0)
         )
 
-        pkg.write_int32(
-            item.get("quality", 1)
+        # Build item flags
+        flags = 0
+
+        if item.get("picked_up", False):
+            flags |= 1
+
+        if item.get("equipped", False):
+            flags |= 2
+
+        if item.get("quality", 1) != 1:
+            flags |= 4
+
+        if item.get("stack", 1) != 1:
+            flags |= 8
+
+        if item.get("variant", 0) != 0:
+            flags |= 16
+
+        crafter_id = item.get(
+            "crafter_id",
+            0
         )
 
-        pkg.write_int32(
-            item.get("variant", 0)
+        if crafter_id != 0:
+            flags |= 32
+
+        # The current format stores the prefab as a stable hash.
+        prefab = item.get(
+            "prefab",
+            ""
         )
 
-        pkg.write_long(
-            item.get("crafter_id", 0)
+        prefab_hash = item.get(
+            "prefab_hash",
+            0
         )
 
-        pkg.write_string(
-            item.get("crafter_name", "")
-        )
+        if prefab:
+            prefab_hash = get_stable_hash_code(
+                prefab
+            )
+
+        if prefab_hash != 0:
+            flags |= 64
 
         custom_data = item.get(
             "custom_data",
             {}
         )
 
-        pkg.write_int32(len(custom_data))
+        if custom_data:
+            flags |= 128
 
-        for k, v in custom_data.items():
-            pkg.write_string(k)
-            pkg.write_string(v)
+        pkg.write_byte(flags)
 
-        pkg.write_int32(
-            item.get("world_level", 0)
-        )
+        # Optional quality
+        if flags & 4:
+            pkg.write_ushort(
+                item.get("quality", 1)
+            )
 
-        pkg.write_bool(
-            item.get("picked_up", False)
-        )
+        # Optional stack
+        if flags & 8:
+            pkg.write_ushort(
+                item.get("stack", 1)
+            )
 
-    # Recipes
+        # Optional variant
+        if flags & 16:
+            pkg.write_int32(
+                item.get("variant", 0)
+            )
+
+        # Optional crafter
+        if flags & 32:
+            pkg.write_long(crafter_id)
+
+            pkg.write_string(
+                item.get(
+                    "crafter_name",
+                    ""
+                )
+            )
+
+        # Optional prefab hash
+        if flags & 64:
+            pkg.write_int32(prefab_hash)
+
+        # Optional custom data
+        if flags & 128:
+            pkg.write_num_items(
+                len(custom_data)
+            )
+
+            for k, v in custom_data.items():
+                pkg.write_string(k)
+                pkg.write_string(v)
+
+        # Cheated flag
+        cheated_flags = 0
+
+        if item.get("cheated", False):
+            cheated_flags |= 1
+
+        pkg.write_byte(cheated_flags)
+
+    # Known recipes
     recipes = data.get(
         "known_recipes",
         []
@@ -571,7 +691,7 @@ def pack_player_data_hex(data: dict) -> str:
     for recipe in recipes:
         pkg.write_string(recipe)
 
-    # Stations
+    # Known stations
     stations = data.get(
         "known_stations",
         {}
@@ -583,7 +703,7 @@ def pack_player_data_hex(data: dict) -> str:
         pkg.write_string(k)
         pkg.write_int32(v)
 
-    # Materials
+    # Known materials
     materials = data.get(
         "known_material",
         []
@@ -594,7 +714,7 @@ def pack_player_data_hex(data: dict) -> str:
     for material in materials:
         pkg.write_string(material)
 
-    # Tutorials
+    # Shown tutorials
     tutorials = data.get(
         "shown_tutorials",
         []
@@ -627,7 +747,8 @@ def pack_player_data_hex(data: dict) -> str:
     for trophy in trophies:
         pkg.write_string(trophy)
 
-    # Old biome representation
+    # Known biomes
+    # Current Valheim format uses strings here.
     biomes = data.get(
         "known_biomes",
         []
@@ -636,7 +757,7 @@ def pack_player_data_hex(data: dict) -> str:
     pkg.write_int32(len(biomes))
 
     for biome in biomes:
-        pkg.write_int32(biome)
+        pkg.write_string(biome)
 
     # Known texts
     texts = data.get(
@@ -651,13 +772,6 @@ def pack_player_data_hex(data: dict) -> str:
         pkg.write_string(v)
 
     # Appearance
-    # pkg.write_string(data.get("beard", ""))
-    # pkg.write_string(data.get("hair", ""))
-    # for x in data.get("skin_color", [1.0, 1.0, 1.0]):
-    #     pkg.write_float(x)
-    # for x in data.get("hair_color", [1.0, 1.0, 1.0]):
-    #     pkg.write_float(x)
-    # pkg.write_int32(data.get("model_index", 0))
     pkg.write_string(
         data.get("beard", "")
     )
@@ -694,14 +808,13 @@ def pack_player_data_hex(data: dict) -> str:
         pkg.write_string(
             food.get("name", "")
         )
+
         pkg.write_float(
             food.get("time", 0.0)
         )
 
     # Skills
-    pkg.write_int32(
-        data.get("skill_version", 2)
-    )
+    pkg.write_int32(2)
 
     skills = data.get(
         "skills",
@@ -723,7 +836,7 @@ def pack_player_data_hex(data: dict) -> str:
             skill.get("xp", 0.0)
         )
 
-    # Custom data
+    # Custom player data
     c_data = data.get(
         "custom_data",
         {}
@@ -735,7 +848,7 @@ def pack_player_data_hex(data: dict) -> str:
         pkg.write_string(k)
         pkg.write_string(v)
 
-    # Final stats
+    # Final stamina/eitr values
     pkg.write_float(
         data.get("stamina", 50.0)
     )
@@ -746,6 +859,22 @@ def pack_player_data_hex(data: dict) -> str:
 
     pkg.write_float(
         data.get("eitr", 0.0)
+    )
+
+    build_ui_hex = data.get(
+        "build_ui_data_hex",
+        ""
+    )
+
+    if build_ui_hex:
+        build_ui_data = bytes.fromhex(
+            build_ui_hex
+        )
+    else:
+        build_ui_data = b""
+
+    pkg.write_byte_array(
+        build_ui_data
     )
 
     return pkg.get_bytes().hex()
