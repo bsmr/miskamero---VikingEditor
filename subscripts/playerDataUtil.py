@@ -3,33 +3,13 @@ import io
 import json
 from pathlib import Path
 
-ITEM_DATABASE_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "data"
-    / "valheim_items.json"
-)
-
-def load_item_database():
-    """Load Valheim prefab hashes from the extracted item database."""
-
-    try:
-        with ITEM_DATABASE_PATH.open(
-            "r",
-            encoding="utf-8",
-        ) as file:
-            data = json.load(file)
-
-        return {
-            int(prefab_hash): item["prefab"]
-            for prefab_hash, item in data.get("items", {}).items()
-        }
-
-    except (OSError, ValueError, KeyError, TypeError) as exc:
-        print(f"Warning: could not load item database: {exc}")
-        return {}
-
+from subscripts.itemDatabase import load_item_database
 
 ITEM_HASH_TO_PREFAB = load_item_database()
+
+def reload_item_database():
+    ITEM_HASH_TO_PREFAB.clear()
+    ITEM_HASH_TO_PREFAB.update(load_item_database())
 
 def int32(value):
     value &= 0xFFFFFFFF
