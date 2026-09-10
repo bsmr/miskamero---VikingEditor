@@ -4,10 +4,12 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QDoubleSpinBox,
     QCheckBox,
-    QDialogButtonBox
+    QDialogButtonBox,
+    QMessageBox
 )
 
 from ui.itemSearchWidget import ItemSearchWidget
+from subscripts.itemValidation import validate_item
 
 
 class ItemEditDialog(QDialog):
@@ -85,14 +87,32 @@ class ItemEditDialog(QDialog):
             | QDialogButtonBox.StandardButton.Cancel
         )
 
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self.validate_and_accept)
         buttons.rejected.connect(self.reject)
 
         layout.addRow(buttons)
 
-    def get_updated_data(self):
-        """Return the edited item data."""
+    def validate_and_accept(self):
+        item = self.item_data.copy()
+        item.update(self.get_updated_data())
 
+        errors = validate_item(item)
+
+        if errors:
+            QMessageBox.warning(
+                self,
+                "Invalid Item",
+                "The item contains invalid data:\n\n"
+                + "\n".join(
+                    f"• {error}"
+                    for error in errors
+                )
+            )
+            return
+
+        self.accept()
+
+    def get_updated_data(self):
         return {
             "prefab": self.prefab_input.get_prefab(),
             "stack": self.stack_input.value(),
