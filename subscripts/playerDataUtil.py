@@ -1,6 +1,35 @@
 import struct
 import io
+import json
+from pathlib import Path
 
+ITEM_DATABASE_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "data"
+    / "valheim_items.json"
+)
+
+def load_item_database():
+    """Load Valheim prefab hashes from the extracted item database."""
+
+    try:
+        with ITEM_DATABASE_PATH.open(
+            "r",
+            encoding="utf-8",
+        ) as file:
+            data = json.load(file)
+
+        return {
+            int(prefab_hash): item["prefab"]
+            for prefab_hash, item in data.get("items", {}).items()
+        }
+
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"Warning: could not load item database: {exc}")
+        return {}
+
+
+ITEM_HASH_TO_PREFAB = load_item_database()
 
 class PlayerDataReader:
     def __init__(self, data: bytes):
@@ -300,7 +329,10 @@ def unpack_player_data_hex(hex_string: str) -> dict:
             item["prefab_hash"] = 0
 
         # keep the old field for now so the existing data model doesn't immediately break
-        item["prefab"] = ""
+        item["prefab"] = ITEM_HASH_TO_PREFAB.get(
+            item["prefab_hash"],
+            ""
+        )
 
         # bit 7 = custom data present
         if flags & 128:
