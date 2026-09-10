@@ -16,7 +16,9 @@ from ui.valheim_detection import (
     is_valheim_running,
     valheim_warning_message,
     find_valheim_installation,
-    is_valid_valheim_installation
+    is_valid_valheim_installation,
+    load_saved_valheim_path,
+    save_valheim_path
 )
 
 from subscripts.fchUtil import (
@@ -132,59 +134,67 @@ class MainWindow(QMainWindow):
     def update_item_database(self):
         """Find Valheim and scan its bundles to refresh the item database."""
 
-        # Ask how to find Valheim.
-        choice = QMessageBox.question(
-            self,
-            "Valheim Installation",
-            "The editor needs to locate your Valheim installation.\n\n"
-            "Would you like the editor to try finding it automatically?\n\n"
-            "Choose Yes for automatic detection.\n"
-            "Choose No to select the Valheim folder manually.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes
-        )
+        valheim_dir = load_saved_valheim_path()
 
-        valheim_dir = None
+        # Use the saved path if it still points to a valid installation.
+        if valheim_dir is not None:
+            if not is_valid_valheim_installation(valheim_dir):
+                valheim_dir = None
 
-        if choice == QMessageBox.StandardButton.Yes:
-            valheim_dir = find_valheim_installation()
+        # No valid saved path. Ask the user how to find Valheim.
+        if valheim_dir is None:
 
+            choice = QMessageBox.question(
+                self,
+                "Valheim Installation",
+                "The editor needs to locate your Valheim installation.\n\n"
+                "Would you like the editor to try finding it automatically?\n\n"
+                "Choose Yes for automatic detection.\n"
+                "Choose No to select the Valheim folder manually.",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+            )
+
+            if choice == QMessageBox.StandardButton.Yes:
+                valheim_dir = find_valheim_installation()
+
+                if valheim_dir is None:
+                    QMessageBox.warning(
+                        self,
+                        "Valheim Not Found",
+                        "The editor could not automatically find your "
+                        "Valheim installation.\n\n"
+                        "Please select the Valheim folder manually."
+                    )
+
+            # Automatic detection failed or manual selection chosen.
             if valheim_dir is None:
-                QMessageBox.warning(
+                selected_dir = QFileDialog.getExistingDirectory(
                     self,
-                    "Valheim Not Found",
-                    "The editor could not automatically find your "
-                    "Valheim installation.\n\n"
-                    "Please select the Valheim folder manually."
+                    "Select Valheim Installation Folder"
                 )
 
-        # Automatic detection failed OR user chose manual selection.
-        if valheim_dir is None:
-            selected_dir = QFileDialog.getExistingDirectory(
-                self,
-                "Select Valheim Installation Folder"
-            )
+                if not selected_dir:
+                    return
 
-            if not selected_dir:
+                valheim_dir = Path(selected_dir)
+
+            # Validate the path before saving it.
+            if not is_valid_valheim_installation(valheim_dir):
+                QMessageBox.critical(
+                    self,
+                    "Invalid Valheim Installation",
+                    "The selected folder does not appear to be a valid "
+                    "Valheim installation.\n\n"
+                    "Please select the folder containing:\n"
+                    "valheim_Data\\StreamingAssets\\SoftRef\\Bundles"
+                )
                 return
 
-            valheim_dir = selected_dir
+            save_valheim_path(valheim_dir)
 
-        valheim_dir = os.path.abspath(str(valheim_dir))
-
-        # Validate the selected/found installation.
-        if not is_valid_valheim_installation(
-            Path(valheim_dir)
-        ):
-            QMessageBox.critical(
-                self,
-                "Invalid Valheim Installation",
-                "The selected folder does not appear to be a valid "
-                "Valheim installation.\n\n"
-                "Please select the folder containing:\n"
-                "valheim_Data\\StreamingAssets\\SoftRef\\Bundles"
-            )
-            return
+        valheim_dir = Path(valheim_dir)
 
         self.btn_update_items.setEnabled(False)
 

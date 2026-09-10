@@ -4,6 +4,11 @@ import psutil
 from pathlib import Path
 from typing import Optional
 
+VALHEIM_CONFIG_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "data"
+    / "valheim_config.json"
+)
 
 def is_valheim_running() -> bool:
     try:
@@ -197,3 +202,51 @@ def find_valheim_installation() -> Optional[Path]:
                 return valheim_path
 
     return None
+
+def load_saved_valheim_path() -> Optional[Path]:
+    """Load the previously saved Valheim installation path."""
+
+    if not VALHEIM_CONFIG_PATH.is_file():
+        return None
+
+    try:
+        import json
+
+        with VALHEIM_CONFIG_PATH.open(
+            "r",
+            encoding="utf-8"
+        ) as file:
+            data = json.load(file)
+
+        path = data.get("valheim_dir")
+
+        if not path:
+            return None
+
+        return Path(path)
+
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def save_valheim_path(valheim_dir):
+    """Save the Valheim installation path for future use."""
+
+    import json
+
+    VALHEIM_CONFIG_PATH.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    with VALHEIM_CONFIG_PATH.open(
+        "w",
+        encoding="utf-8"
+    ) as file:
+        json.dump(
+            {
+                "valheim_dir": str(valheim_dir)
+            },
+            file,
+            indent=2
+        )
