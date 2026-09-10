@@ -3,14 +3,21 @@ import os
 
 from PySide6.QtWidgets import *
 from PySide6.QtCore import Qt
+from pathlib import Path
 
 from ui.inventoryTab import InventoryTab
 from ui.skillsTab import SkillsTab
 from ui.statsTab import StatsTab
 from ui.appearanceTab import AppearanceTab
 from ui.miscTab import MiscTab
-from ui.valheim_detection import is_valheim_running, valheim_warning_message
 from data.info import INFO_TEXT
+
+from ui.valheim_detection import (
+    is_valheim_running,
+    valheim_warning_message,
+    find_valheim_installation,
+    is_valid_valheim_installation
+)
 
 from subscripts.fchUtil import (
     decompile_fch,
@@ -19,7 +26,13 @@ from subscripts.fchUtil import (
 
 from subscripts.playerDataUtil import (
     unpack_player_data_hex,
-    pack_player_data_hex
+    pack_player_data_hex,
+    reload_item_database
+)
+
+from subscripts.itemDatabase import (
+    ITEM_DATABASE_PATH,
+    update_item_database as scan_item_database
 )
 
 class MainWindow(QMainWindow):
@@ -53,11 +66,13 @@ class MainWindow(QMainWindow):
         self.btn_open_json = QPushButton("Open JSON")
         self.btn_save_json = QPushButton("Save JSON")
         self.btn_save_save = QPushButton("Save Savefile")
+        self.btn_update_items = QPushButton("Update Item Database")
 
         button_layout.addWidget(self.btn_open_save)
         button_layout.addWidget(self.btn_open_json)
         button_layout.addWidget(self.btn_save_json)
         button_layout.addWidget(self.btn_save_save)
+        button_layout.addWidget(self.btn_update_items)
 
         main_layout.addLayout(button_layout)
 
@@ -83,6 +98,9 @@ class MainWindow(QMainWindow):
         self.btn_open_json.clicked.connect(self.open_json_file)
         self.btn_save_json.clicked.connect(self.save_json_file)
         self.btn_save_save.clicked.connect(self.save_save_file)
+        self.btn_update_items.clicked.connect(self.update_item_database)
+
+        self.check_item_database()
 
         msg = QMessageBox(self)
         msg.setWindowTitle("Information")
@@ -93,6 +111,149 @@ class MainWindow(QMainWindow):
         )
         msg.exec()
 
+    def check_item_database(self):
+        """Create the item database automatically if it does not exist."""
+
+        if ITEM_DATABASE_PATH.exists():
+            return
+
+        QMessageBox.information(
+            self,
+            "Item Database",
+            "The Valheim item database has not been created yet.\n\n"
+            "The editor will now scan your Valheim installation "
+            "to create it.\n\n"
+            "It is needed to properly display item names in the inventory tab.\n\n"
+            "This may take a moment."
+        )
+
+        self.update_item_database()
+
+    def update_item_database(self):
+        """Find Valheim and scan its bundles to refresh the item database."""
+
+        # Ask how to find Valheim.
+        choice = QMessageBox.question(
+            self,
+            "Valheim Installation",
+            "The editor needs to locate your Valheim installation.\n\n"
+            "Would you like the editor to try finding it automatically?\n\n"
+            "Choose Yes for automatic detection.\n"
+            "Choose No to select the Valheim folder manually.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        valheim_dir = None
+
+        if choice == QMessageBox.StandardButton.Yes:
+            valheim_dir = find_valheim_installation()
+
+            if valheim_dir is None:
+                QMessageBox.warning(
+                    self,
+                    "Valheim Not Found",
+                    "The editor could not automatically find your "
+                    "Valheim installation.\n\n"
+                    "Please select the Valheim folder manually."
+                )
+
+        # Automatic detection failed OR user chose manual selection.
+        if valheim_dir is None:
+            selected_dir = QFileDialog.getExistingDirectory(
+                self,
+                "Select Valheim Installation Folder"
+            )
+
+            if not selected_dir:
+                return
+
+            valheim_dir = selected_dir
+
+        valheim_dir = os.path.abspath(str(valheim_dir))
+
+        # Validate the selected/found installation.
+        if not is_valid_valheim_installation(
+            Path(valheim_dir)
+        ):
+            QMessageBox.critical(
+                self,
+                "Invalid Valheim Installation",
+                "The selected folder does not appear to be a valid "
+                "Valheim installation.\n\n"
+                "Please select the folder containing:\n"
+                "valheim_Data\\StreamingAssets\\SoftRef\\Bundles"
+            )
+            return
+
+        self.btn_update_items.setEnabled(False)
+
+        progress = QProgressDialog(
+            "Loading Valheim bundles...",
+            None,
+            0,
+            100,
+            self
+        )
+
+        progress.setWindowTitle("Updating Item Database")
+        progress.setWindowModality(
+            Qt.WindowModality.ApplicationModal
+        )
+        progress.setMinimumDuration(0)
+        progress.setCancelButton(None)
+        progress.setAutoClose(False)
+        progress.show()
+
+        QApplication.processEvents()
+
+        def update_progress(current, total, message):
+            progress.setLabelText(message)
+
+            if total > 0:
+                progress.setValue(
+                    int(current / total * 100)
+                )
+
+            QApplication.processEvents()
+
+        try:
+            item_database = scan_item_database(
+                valheim_dir,
+                progress_callback=update_progress
+            )
+
+            progress.setLabelText(
+                "Finishing item database..."
+            )
+            progress.setValue(100)
+            QApplication.processEvents()
+
+            reload_item_database()
+
+            progress.close()
+
+            QMessageBox.information(
+                self,
+                "Item Database Updated",
+                "Valheim item database updated successfully.\n\n"
+                f"Valheim installation:\n{valheim_dir}\n\n"
+                f"Items found: {len(item_database)}"
+            )
+
+        except Exception as e:
+            progress.close()
+
+            QMessageBox.critical(
+                self,
+                "Item Database Error",
+                "Could not update the Valheim item database:\n\n"
+                f"{str(e)}"
+            )
+
+        finally:
+            self.btn_update_items.setEnabled(True)
+    
     def open_save_file(self):
         filename, _ = QFileDialog.getOpenFileName(
             self, "Open Valheim Character Save", "", "Valheim Character (*.fch)"
