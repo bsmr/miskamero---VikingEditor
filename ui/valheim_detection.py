@@ -255,3 +255,13 @@ def save_valheim_path(valheim_dir):
     config["valheim_dir"] = str(valheim_dir)
 
     save_config(config)
+
+def get_valheim_character_save_directory() -> Path:
+    return (
+        Path(os.environ["USERPROFILE"])
+        / "AppData"
+        / "LocalLow"
+        / "IronGate"
+        / "Valheim"
+        / "characters"
+    )
