@@ -17,7 +17,7 @@ from ui.statsTab import StatsTab
 from ui.appearanceTab import AppearanceTab
 from ui.progressTab import ProgressTab
 from ui.statisticsTab import StatisticsTab
-from ui.miscTab import MiscTab
+from ui.characterTab import CharacterTab
 
 from data.info import INFO_TEXT
 
@@ -170,7 +170,7 @@ class MainWindow(QMainWindow):
         self.progress_tab = ProgressTab()
         self.statistics_tab = StatisticsTab()
 
-        self.misc_tab = MiscTab()
+        self.character_tab = CharacterTab()
 
         self.tabs.addTab(self.inventory_tab, "Inventory")
         self.tabs.addTab(self.skills_tab, "Skills")
@@ -179,7 +179,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.progress_tab, "Progress")
         self.tabs.addTab(self.statistics_tab, "Statistics")
 
-        self.tabs.addTab(self.misc_tab, "Misc")
+        self.tabs.addTab(self.character_tab, "Character")
 
         self.btn_open_save.clicked.connect(self.open_save_file)
         self.btn_save_save.clicked.connect(self.save_save_file)
@@ -463,7 +463,7 @@ class MainWindow(QMainWindow):
             self.progress_tab.load_data(self.player_data)
             self.statistics_tab.load_data(self.player_data, self.root_save)
 
-            self.misc_tab.load_data(
+            self.character_tab.load_data(
                 self.player_data,
                 self.root_save
             )
@@ -507,7 +507,7 @@ class MainWindow(QMainWindow):
                 self.appearance_tab.load_data(self.player_data)
                 self.progress_tab.load_data(self.player_data)
                 self.statistics_tab.load_data(self.player_data, self.root_save)
-                self.misc_tab.load_data(self.player_data, self.root_save)
+                self.character_tab.load_data(self.player_data, self.root_save)
                 
                 self.file_label.setText(f"Loaded Save: {os.path.basename(filename)} (Char: {self.root_save.get('character_name')})")
                 QMessageBox.information(self, "Success", "Valheim Save decompiled and loaded successfully!")
@@ -637,7 +637,7 @@ class MainWindow(QMainWindow):
             self.skills_tab.save_changes()
             self.stats_tab.save_changes()
             self.appearance_tab.save_changes()
-            self.misc_tab.save_changes()
+            self.character_tab.save_changes()
 
             # 2. update
             char_name = self.root_save.get("character_name", "Viking").strip()
