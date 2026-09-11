@@ -100,6 +100,7 @@ class MainWindow(QMainWindow):
         self.root_save = None       # Container data (.fch level dict)
         self.player_data = None     # Decoded character attributes dict
         self.current_fch = None
+        self.loaded_backup = False
 
         self.setWindowTitle("Viking Editor")
         self.resize(1200, 800)
@@ -428,6 +429,7 @@ class MainWindow(QMainWindow):
     def load_backup_file(self, filename):
         try:
             self.root_save = decompile_fch(str(filename))
+            self.loaded_backup = True
 
             player_hex = self.root_save.get("player_data_hex")
 
@@ -479,6 +481,7 @@ class MainWindow(QMainWindow):
             # 1. Unpack container
             self.root_save = decompile_fch(filename)
             self.current_fch = filename
+            self.loaded_backup = False
 
             # 2. Extract nested player hex bytes
             player_hex = self.root_save.get("player_data_hex")
@@ -563,10 +566,21 @@ class MainWindow(QMainWindow):
             char_name = self.root_save.get("character_name", "Viking").strip()
             
             # filename: lowercase name + .fch
-            suggested_filename = f"{char_name.lower()}.fch"
+            if self.loaded_backup:
+                suggested_filename = f"{char_name.lower()}_restored.fch"
+            else:
+                suggested_filename = f"{char_name.lower()}.fch"
 
-            default_dir = os.path.dirname(self.current_fch) if getattr(self, 'current_fch', None) else ""
-            default_save_path = os.path.join(default_dir, suggested_filename)
+            default_dir = (
+                os.path.dirname(self.current_fch)
+                if getattr(self, "current_fch", None)
+                else ""
+            )
+
+            default_save_path = os.path.join(
+                default_dir,
+                suggested_filename
+            )
 
             # 3. open save dialog
             filename, _ = QFileDialog.getSaveFileName(
@@ -631,6 +645,7 @@ class MainWindow(QMainWindow):
             # )
             
             self.current_fch = filename
+            self.loaded_backup = False
 
         except Exception as e:
             if 'temp_wrapper_path' in locals() and os.path.exists(temp_wrapper_path):
