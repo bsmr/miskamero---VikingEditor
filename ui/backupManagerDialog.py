@@ -21,7 +21,7 @@ class BackupManagerDialog(QDialog):
         super().__init__(parent)
 
         self.setWindowTitle("Backup Manager")
-        self.resize(700, 500)
+        self.resize(800, 600)
 
         self.backup_directory = Path(backup_directory)
         self.main_window = parent
@@ -48,7 +48,16 @@ class BackupManagerDialog(QDialog):
         self.backup_info = QLabel(
             "Select a backup to view its details."
         )
+
         self.backup_info.setWordWrap(True)
+        self.backup_info.setMinimumHeight(100)
+        self.backup_info.setStyleSheet(
+            "QLabel {"
+            "  padding: 10px;"
+            "  border: 1px solid palette(mid);"
+            "  border-radius: 4px;"
+            "}"
+        )
         layout.addWidget(self.backup_info)
 
         button_layout = QHBoxLayout()
@@ -57,13 +66,39 @@ class BackupManagerDialog(QDialog):
         self.restore_button = QPushButton("Restore to current loaded save")
         self.restore_to_valheim_button = QPushButton("Restore to Valheim Saves")
         self.delete_button = QPushButton("Delete")
+        self.delete_all_button = QPushButton("Delete All backups for char")
         self.open_folder_button = QPushButton("Open Backups Folder")
+        self.refresh_button = QPushButton("Refresh")
+
+        for button in (
+            self.open_button,
+            self.restore_button,
+            self.restore_to_valheim_button,
+            self.delete_button,
+            self.delete_all_button,
+            self.open_folder_button,
+            self.refresh_button,
+        ):
+            button.setMinimumHeight(32)
+
+        self.delete_button.setStyleSheet(
+            "QPushButton { color: #b00020; }"
+        )
+
+        self.delete_all_button.setStyleSheet(
+            "QPushButton { color: #b00020; }"
+        )
 
         button_layout.addWidget(self.open_button)
+
         button_layout.addWidget(self.restore_button)
         button_layout.addWidget(self.restore_to_valheim_button)
+
         button_layout.addWidget(self.delete_button)
+        button_layout.addWidget(self.delete_all_button)
+
         button_layout.addWidget(self.open_folder_button)
+        button_layout.addWidget(self.refresh_button)
 
         layout.addLayout(button_layout)
 
@@ -72,7 +107,13 @@ class BackupManagerDialog(QDialog):
         self.restore_button.clicked.connect(self.restore_backup)
         self.restore_to_valheim_button.clicked.connect(self.restore_to_valheim)
 
+        self.delete_button.clicked.connect(self.delete_backup)
+        self.delete_all_button.clicked.connect(
+            self.delete_all_backups
+        )
+
         self.open_folder_button.clicked.connect(self.open_backups_folder)
+        self.refresh_button.clicked.connect(self.load_backups)
 
         self.backup_list.itemDoubleClicked.connect(
             lambda _: self.open_backup()
@@ -483,5 +524,77 @@ class BackupManagerDialog(QDialog):
                 f"{e}"
             )
             return
+
+        self.load_backups()
+
+    def delete_all_backups(self):
+        character_name = self.character_filter.currentText()
+
+        if character_name == "All Characters":
+            QMessageBox.information(
+                self,
+                "Select Character",
+                "Please select a specific character first."
+            )
+            return
+
+        character_dir = (
+            self.backup_directory
+            / character_name
+        )
+
+        if not character_dir.is_dir():
+            QMessageBox.information(
+                self,
+                "No Backups",
+                f"No backups were found for {character_name}."
+            )
+            return
+
+        backups = list(
+            character_dir.glob("*.fch")
+        )
+
+        if not backups:
+            QMessageBox.information(
+                self,
+                "No Backups",
+                f"No backups were found for {character_name}."
+            )
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Delete All Backups",
+            f"Are you sure you want to permanently delete "
+            f"all {len(backups)} backups for {character_name}?\n\n"
+            "This action cannot be undone.",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            for backup in backups:
+                backup.unlink()
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Delete Failed",
+                "Could not delete all backups:\n\n"
+                f"{e}"
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Backups Deleted",
+            f"All backups for {character_name} "
+            "were deleted successfully."
+        )
 
         self.load_backups()
