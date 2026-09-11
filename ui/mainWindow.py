@@ -9,11 +9,14 @@ from PySide6.QtCore import Qt, QThread, Signal
 from pathlib import Path
 
 from ui.settingsDialog import SettingsDialog
+from ui.backupManagerDialog import BackupManagerDialog
+
 from ui.inventoryTab import InventoryTab
 from ui.skillsTab import SkillsTab
 from ui.statsTab import StatsTab
 from ui.appearanceTab import AppearanceTab
 from ui.miscTab import MiscTab
+
 from data.info import INFO_TEXT
 
 from ui.valheim_detection import (
@@ -112,6 +115,9 @@ class MainWindow(QMainWindow):
         open_save_action = file_menu.addAction("Open Save File")
         open_json_action = file_menu.addAction("Open JSON")
         close_json_action = file_menu.addAction("Close JSON")
+        backup_manager_action = file_menu.addAction("Manage Backups...")
+
+        file_menu.addSeparator()
 
         file_menu.addSeparator()
 
@@ -125,8 +131,11 @@ class MainWindow(QMainWindow):
 
         open_save_action.triggered.connect(self.open_save_file)
         open_json_action.triggered.connect(self.open_json_file)
+        backup_manager_action.triggered.connect(self.show_backup_manager)
+
         self.update_items_action.triggered.connect(self.update_item_database)
         settings_action.triggered.connect(self.show_settings)
+
         exit_action.triggered.connect(self.close)
 
         about_action.triggered.connect(self.show_about)
@@ -256,6 +265,13 @@ class MainWindow(QMainWindow):
             settings = dialog.get_settings()
             self.config.update(settings)
             save_config(self.config)
+
+    def show_backup_manager(self):
+        dialog = BackupManagerDialog(
+            self.get_backup_directory(),
+            self
+        )
+        dialog.exec()
 
     def check_valheim_installation(self):
         valheim_dir = load_saved_valheim_path()
@@ -408,7 +424,50 @@ class MainWindow(QMainWindow):
         progress.canceled.connect(cancel_update)
 
         worker.start()
-    
+
+    def load_backup_file(self, filename):
+        try:
+            self.root_save = decompile_fch(str(filename))
+
+            player_hex = self.root_save.get("player_data_hex")
+
+            if not player_hex:
+                QMessageBox.warning(
+                    self,
+                    "Empty Backup",
+                    "The backup contains no player data."
+                )
+                return False
+
+            self.player_data = unpack_player_data_hex(player_hex)
+
+            self.inventory_tab.load_data(self.player_data)
+            self.skills_tab.load_data(self.player_data)
+            self.stats_tab.load_data(
+                self.player_data,
+                self.root_save
+            )
+            self.appearance_tab.load_data(self.player_data)
+            self.misc_tab.load_data(
+                self.player_data,
+                self.root_save
+            )
+
+            self.file_label.setText(
+                f"Loaded Backup: {os.path.basename(filename)} "
+                f"(Char: {self.root_save.get('character_name')})"
+            )
+
+            return True
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error Loading Backup",
+                f"Failed to load backup:\n\n{str(e)}"
+            )
+            return False
+
     def open_save_file(self):
         filename, _ = QFileDialog.getOpenFileName(
             self, "Open Valheim Character Save", "", "Valheim Character (*.fch)"
@@ -457,7 +516,6 @@ class MainWindow(QMainWindow):
         # except Exception as e:
         #     QMessageBox.critical(self, "Error", f"Failed to open JSON:\n{str(e)}")
         QMessageBox.information(self, "Feature WIP", "Opening JSON files is currently a work in progress and not yet implemented.")
-
 
     def save_json_file(self):
         # if not self.player_data:
