@@ -1,14 +1,21 @@
 import os
 import re
 import psutil
+import json
 from pathlib import Path
 from typing import Optional
 
 VALHEIM_CONFIG_PATH = (
     Path(__file__).resolve().parent.parent
     / "data"
-    / "valheim_config.json"
+    / "VikingConfig.json"
 )
+
+DEFAULT_CONFIG = {
+    "valheim_dir": "",
+    "auto_backup": True,
+    "is_first_launch": True
+}
 
 def is_valheim_running() -> bool:
     try:
@@ -33,7 +40,6 @@ def is_valheim_running() -> bool:
     except Exception as e:
         print(f"Error checking for Valheim process: {e}")
         return False
-
 
 def get_valheim_process_info() -> Optional[dict]:
     try:
@@ -66,7 +72,6 @@ def get_valheim_process_info() -> Optional[dict]:
         print(f"Error getting Valheim process info: {e}")
         return None
 
-
 def valheim_warning_message() -> str:
     info = get_valheim_process_info()
 
@@ -82,10 +87,7 @@ def valheim_warning_message() -> str:
 
     return "Valheim is not currently running."
 
-
 def is_valid_valheim_installation(path: Path) -> bool:
-    """Check whether a directory contains a Valheim installation."""
-
     if not path.is_dir():
         return False
 
@@ -99,10 +101,7 @@ def is_valid_valheim_installation(path: Path) -> bool:
 
     return bundles_dir.is_dir()
 
-
 def get_steam_installations() -> list[Path]:
-    """Find Steam installation/library locations."""
-
     installations = []
 
     program_files_paths = [
@@ -122,10 +121,7 @@ def get_steam_installations() -> list[Path]:
 
     return installations
 
-
 def parse_steam_library_paths(steam_path: Path) -> list[Path]:
-    """Read Steam's libraryfolders.vdf and return library paths."""
-
     library_file = (
         steam_path
         / "steamapps"
@@ -163,7 +159,6 @@ def parse_steam_library_paths(steam_path: Path) -> list[Path]:
             paths.append(library_path)
 
     return paths
-
 
 def find_valheim_installation() -> Optional[Path]:
     """
@@ -203,37 +198,29 @@ def find_valheim_installation() -> Optional[Path]:
 
     return None
 
-def load_saved_valheim_path() -> Optional[Path]:
-    """Load the previously saved Valheim installation path."""
-
+def load_config() -> dict:
     if not VALHEIM_CONFIG_PATH.is_file():
-        return None
+        return DEFAULT_CONFIG.copy()
 
     try:
-        import json
-
         with VALHEIM_CONFIG_PATH.open(
             "r",
             encoding="utf-8"
         ) as file:
             data = json.load(file)
 
-        path = data.get("valheim_dir")
+        if not isinstance(data, dict):
+            return DEFAULT_CONFIG.copy()
 
-        if not path:
-            return None
+        config = DEFAULT_CONFIG.copy()
+        config.update(data)
 
-        return Path(path)
+        return config
 
     except (OSError, ValueError, TypeError):
-        return None
+        return DEFAULT_CONFIG.copy()
 
-
-def save_valheim_path(valheim_dir):
-    """Save the Valheim installation path for future use."""
-
-    import json
-
+def save_config(config: dict):
     VALHEIM_CONFIG_PATH.parent.mkdir(
         parents=True,
         exist_ok=True
@@ -244,9 +231,25 @@ def save_valheim_path(valheim_dir):
         encoding="utf-8"
     ) as file:
         json.dump(
-            {
-                "valheim_dir": str(valheim_dir)
-            },
+            config,
             file,
             indent=2
         )
+
+def load_saved_valheim_path() -> Optional[Path]:
+    config = load_config()
+
+    path = config.get("valheim_dir")
+
+    if not path:
+        return None
+
+    return Path(path)
+
+
+def save_valheim_path(valheim_dir):
+    config = load_config()
+
+    config["valheim_dir"] = str(valheim_dir)
+
+    save_config(config)
