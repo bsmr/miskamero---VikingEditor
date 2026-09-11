@@ -381,30 +381,37 @@ class BackupManagerDialog(QDialog):
         if answer != QMessageBox.StandardButton.Yes:
             return
 
+        safety_backup = None
+
         try:
             # Create a safety backup of the current save
-            if self.main_window.config.get("auto_backup", True):
-                if current_fch.is_file():
-                    safety_backup = self.main_window.create_backup(
-                        current_fch
-                    )
+            if (
+                self.main_window.config.get("auto_backup", True)
+                and current_fch.is_file()
+            ):
+                safety_backup = self.main_window.create_backup(
+                    current_fch
+                )
 
-                    character_name = (
-                        self.main_window.root_save.get(
-                            "character_name",
-                            "Viking"
-                        ).strip()
-                    )
+                character_name = (
+                    self.main_window.root_save.get(
+                        "character_name",
+                        "Viking"
+                    ).strip()
+                )
 
-                    if not character_name:
-                        character_name = "Viking"
+                if not character_name:
+                    character_name = "Viking"
 
-                    self.main_window.cleanup_old_backups(
-                        character_name
-                    )
+                self.main_window.cleanup_old_backups(
+                    character_name
+                )
 
             # Restore the selected backup
-            shutil.copy2(backup_path, current_fch)
+            shutil.copy2(
+                backup_path,
+                current_fch
+            )
 
         except Exception as e:
             QMessageBox.critical(
@@ -415,21 +422,23 @@ class BackupManagerDialog(QDialog):
             )
             return
 
-        except Exception as e:
-            QMessageBox.critical(
-                self,
-                "Restore Failed",
-                "Could not restore the backup:\n\n"
-                f"{e}"
+        if safety_backup is not None:
+            safety_message = (
+                f"Safety backup created:\n"
+                f"{safety_backup}"
             )
-            return
+        else:
+            safety_message = (
+                "No safety backup was created "
+                "(automatic backups are disabled)."
+            )
 
         QMessageBox.information(
             self,
             "Backup Restored",
             "The backup was restored successfully.\n\n"
             f"Restored:\n{current_fch}\n\n"
-            f"Safety backup:\n{safety_backup}"
+            f"{safety_message}"
         )
 
         self.main_window.load_backup_file(current_fch)
