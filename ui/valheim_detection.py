@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Optional
 
 VALHEIM_CONFIG_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "data"
+    Path(os.environ["LOCALAPPDATA"])
+    / "VikingEditor"
     / "VikingConfig.json"
 )
 

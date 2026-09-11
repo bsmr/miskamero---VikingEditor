@@ -5,8 +5,10 @@ import UnityPy
 from UnityPy.enums import ClassIDType
 
 ITEM_DATABASE_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "data"
+    Path.home()
+    / "AppData"
+    / "Local"
+    / "VikingEditor"
     / "valheim_items.json"
 )
 
