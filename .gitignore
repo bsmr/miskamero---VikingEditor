@@ -11,3 +11,4 @@
 
 !info.txt
 !requirements.txt
+tools/stripJson.py
