@@ -1,10 +1,13 @@
+import json
+
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QGridLayout,
     QMenu,
     QMessageBox,
-    QDialog
+    QDialog,
+    QApplication
 )
 
 from PySide6.QtCore import Qt
@@ -65,22 +68,31 @@ class InventoryTab(QWidget):
     def show_slot_menu(self, position, slot: InventorySlot):
         """Right-click context menu options."""
         menu = QMenu()
-        
+
         if slot.item_data:
             edit_action = menu.addAction("Edit Item")
-            delete_action = menu.addAction("Delete/Empty Slot")
+            copy_action = menu.addAction("Copy Item")
+            remove_action = menu.addAction("Remove Item")
+
             action = menu.exec(slot.mapToGlobal(position))
-            
+
             if action == edit_action:
                 self.edit_slot_item(slot)
-            elif action == delete_action:
-                self.delete_slot_item(slot)
+            elif action == copy_action:
+                self.copy_slot_item(slot)
+            elif action == remove_action:
+                self.remove_slot_item(slot)
+
         else:
             add_action = menu.addAction("Add Item Here")
+            paste_action = menu.addAction("Paste Item")
+
             action = menu.exec(slot.mapToGlobal(position))
-            
+
             if action == add_action:
                 self.add_item_to_slot(slot)
+            elif action == paste_action:
+                self.paste_slot_item(slot)
 
     def edit_slot_item(self, slot: InventorySlot):
         dialog = ItemEditDialog(slot.item_data, self)
@@ -89,7 +101,7 @@ class InventoryTab(QWidget):
             slot.item_data.update(updated)
             slot.update_visuals()
 
-    def delete_slot_item(self, slot: InventorySlot):
+    def remove_slot_item(self, slot: InventorySlot):
         confirm = QMessageBox.question(
             self, "Confirm Delete", 
             f"Are you sure you want to delete the item in slot ({slot.grid_x}, {slot.grid_y})?",
@@ -99,6 +111,65 @@ class InventoryTab(QWidget):
             if slot.item_data in self.player_data["inventory"]:
                 self.player_data["inventory"].remove(slot.item_data)
             slot.clear_item()
+
+    def copy_slot_item(self, slot: InventorySlot):
+        """Copy an inventory item to the system clipboard."""
+
+        if not slot.item_data:
+            return
+
+        clipboard_data = {
+            "valheim_editor": "inventory_item",
+            "item": slot.item_data.copy()
+        }
+
+        clipboard_text = json.dumps(
+            clipboard_data,
+            ensure_ascii=False
+        )
+
+        QApplication.clipboard().setText(clipboard_text)
+
+    def paste_slot_item(self, slot: InventorySlot):
+        """Paste an inventory item from the system clipboard."""
+
+        clipboard_text = QApplication.clipboard().text()
+
+        try:
+            clipboard_data = json.loads(clipboard_text)
+        except (json.JSONDecodeError, TypeError):
+            QMessageBox.warning(
+                self,
+                "Invalid Item",
+                "The clipboard does not contain a valid VikingEditor item."
+            )
+            return
+
+        if clipboard_data.get("valheim_editor") != "inventory_item":
+            QMessageBox.warning(
+                self,
+                "Invalid Item",
+                "The clipboard does not contain a VikingEditor item."
+            )
+            return
+
+        item_data = clipboard_data.get("item")
+
+        if not isinstance(item_data, dict):
+            QMessageBox.warning(
+                self,
+                "Invalid Item",
+                "The clipboard item data is invalid."
+            )
+            return
+
+        pasted_item = item_data.copy()
+
+        pasted_item["grid_x"] = slot.grid_x
+        pasted_item["grid_y"] = slot.grid_y
+
+        self.player_data["inventory"].append(pasted_item)
+        slot.set_item(pasted_item)
 
     def add_item_to_slot(self, slot: InventorySlot):
         new_item = {
