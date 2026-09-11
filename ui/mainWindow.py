@@ -117,6 +117,7 @@ class MainWindow(QMainWindow):
         open_json_action = file_menu.addAction("Open JSON")
         close_json_action = file_menu.addAction("Close JSON")
         backup_manager_action = file_menu.addAction("Manage Backups...")
+        export_json_action = file_menu.addAction("Export Decompiled JSON...")
 
         file_menu.addSeparator()
 
@@ -133,6 +134,7 @@ class MainWindow(QMainWindow):
         open_save_action.triggered.connect(self.open_save_file)
         open_json_action.triggered.connect(self.open_json_file)
         backup_manager_action.triggered.connect(self.show_backup_manager)
+        export_json_action.triggered.connect(self.export_decompiled_json)
 
         self.update_items_action.triggered.connect(self.update_item_database)
         settings_action.triggered.connect(self.show_settings)
@@ -501,6 +503,59 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             QMessageBox.critical(self, "Error loading save", f"Failed to parse file:\n{str(e)}")
+
+    def export_decompiled_json(self):
+        if not self.root_save:
+            QMessageBox.warning(
+                self,
+                "No Save Loaded",
+                "Please load a Valheim character save first."
+            )
+            return
+
+        char_name = self.root_save.get(
+            "character_name",
+            "Viking"
+        ).strip()
+
+        if not char_name:
+            char_name = "Viking"
+
+        default_filename = f"{char_name}_decompiled.json"
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Decompiled JSON",
+            default_filename,
+            "JSON Files (*.json)"
+        )
+
+        if not filename:
+            return
+
+        try:
+            with open(filename, "w", encoding="utf-8") as f:
+                json.dump(
+                    self.root_save,
+                    f,
+                    indent=4,
+                    ensure_ascii=False
+                )
+
+            QMessageBox.information(
+                self,
+                "JSON Exported",
+                "The save was decompiled successfully.\n\n"
+                f"JSON file:\n{filename}"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Export Failed",
+                "Could not export the decompiled save:\n\n"
+                f"{e}"
+            )
 
     def open_json_file(self):
         # filename, _ = QFileDialog.getOpenFileName(
