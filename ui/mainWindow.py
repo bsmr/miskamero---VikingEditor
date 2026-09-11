@@ -38,6 +38,10 @@ from subscripts.fchUtil import (
     compile_fch
 )
 
+from subscripts.newCharacter import (
+    create_new_character
+)
+
 from subscripts.playerDataUtil import (
     unpack_player_data_hex,
     pack_player_data_hex,
@@ -116,6 +120,7 @@ class MainWindow(QMainWindow):
         file_menu = menu_bar.addMenu("File")
         help_menu = menu_bar.addMenu("Help")
 
+        new_character_action = file_menu.addAction("New Character...")
         open_save_action = file_menu.addAction("Open Save File")
         open_json_action = file_menu.addAction("Open JSON")
         close_json_action = file_menu.addAction("Close JSON")
@@ -134,6 +139,7 @@ class MainWindow(QMainWindow):
         exit_action = file_menu.addAction("Exit")
         about_action = help_menu.addAction("About Viking Editor")
 
+        new_character_action.triggered.connect(self.new_character)
         open_save_action.triggered.connect(self.open_save_file)
         open_json_action.triggered.connect(self.open_json_file)
         backup_manager_action.triggered.connect(self.show_backup_manager)
@@ -489,6 +495,109 @@ class MainWindow(QMainWindow):
                 f"Failed to load backup:\n\n{str(e)}"
             )
             return False
+
+    def new_character(self):
+        character_name, ok = QInputDialog.getText(
+            self,
+            "New Character",
+            "Character name:",
+            QLineEdit.EchoMode.Normal,
+            "New Viking"
+        )
+
+        if not ok:
+            return
+
+        character_name = character_name.strip()
+
+        if not character_name:
+            QMessageBox.warning(
+                self,
+                "Invalid Character Name",
+                "Please enter a character name."
+            )
+            return
+
+        try:
+            self.root_save = create_new_character(
+                character_name
+            )
+
+            player_hex = self.root_save.get(
+                "player_data_hex"
+            )
+
+            if not player_hex:
+                raise ValueError(
+                    "The generated character contains no player data."
+                )
+
+            self.player_data = unpack_player_data_hex(
+                player_hex
+            )
+
+            self.current_fch = None
+            self.loaded_backup = False
+
+            self.inventory_tab.load_data(
+                self.player_data
+            )
+
+            self.skills_tab.load_data(
+                self.player_data
+            )
+
+            self.stats_tab.load_data(
+                self.player_data,
+                self.root_save
+            )
+
+            self.appearance_tab.load_data(
+                self.player_data
+            )
+
+            self.progress_tab.load_data(
+                self.player_data
+            )
+
+            self.statistics_tab.load_data(
+                self.player_data,
+                self.root_save
+            )
+
+            self.character_tab.load_data(
+                self.player_data,
+                self.root_save
+            )
+
+            self.worlds_tab.load_data(
+                self.root_save
+            )
+
+            self.file_label.setText(
+                f"New Character: {character_name}"
+            )
+
+            QMessageBox.information(
+                self,
+                "New Character",
+                f"New character created successfully!\n\n"
+                f"Character: {character_name}\n"
+                f"Player ID: {self.root_save['player_id']}\n\n"
+                f"The character has not been saved to disk yet."
+            )
+
+        except Exception as e:
+            self.root_save = None
+            self.player_data = None
+            self.current_fch = None
+            self.loaded_backup = False
+
+            QMessageBox.critical(
+                self,
+                "New Character Error",
+                f"Could not create the new character:\n\n{e}"
+            )
 
     def open_save_file(self):
         filename, _ = QFileDialog.getOpenFileName(
