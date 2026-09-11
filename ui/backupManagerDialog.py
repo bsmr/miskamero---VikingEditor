@@ -1,6 +1,8 @@
 from pathlib import Path
 import shutil
 
+from ui.valheim_detection import get_valheim_character_save_directory
+
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -33,20 +35,24 @@ class BackupManagerDialog(QDialog):
         button_layout = QHBoxLayout()
 
         self.open_button = QPushButton("Open Backup")
-        self.restore_button = QPushButton("Restore")
+        self.restore_button = QPushButton("Restore to current loaded save")
+        self.restore_to_valheim_button = QPushButton("Restore to Valheim Saves")
         self.delete_button = QPushButton("Delete")
         self.open_folder_button = QPushButton("Open Backups Folder")
 
         button_layout.addWidget(self.open_button)
         button_layout.addWidget(self.restore_button)
+        button_layout.addWidget(self.restore_to_valheim_button)
         button_layout.addWidget(self.delete_button)
         button_layout.addWidget(self.open_folder_button)
 
         layout.addLayout(button_layout)
 
         self.open_button.clicked.connect(self.open_backup)
+
         self.restore_button.clicked.connect(self.restore_backup)
-        self.delete_button.clicked.connect(self.delete_backup)
+        self.restore_to_valheim_button.clicked.connect(self.restore_to_valheim)
+
         self.open_folder_button.clicked.connect(self.open_backups_folder)
 
         self.backup_list.itemDoubleClicked.connect(
@@ -144,6 +150,75 @@ class BackupManagerDialog(QDialog):
             return
 
         self.accept()
+
+    def restore_to_valheim(self):
+        backup_path = self.get_selected_backup()
+
+        if backup_path is None:
+            return
+
+        if not backup_path.is_file():
+            QMessageBox.warning(
+                self,
+                "Backup Not Found",
+                "The selected backup file no longer exists."
+            )
+            self.load_backups()
+            return
+
+        valheim_save_dir = get_valheim_character_save_directory()
+        name = backup_path.stem
+
+        timestamp_parts = name.rsplit("_", 2)
+
+        if len(timestamp_parts) == 3:
+            character_name = timestamp_parts[0]
+        else:
+            character_name = name
+
+        target_path = valheim_save_dir / f"{character_name}.fch"
+
+        valheim_save_dir.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        if target_path.exists():
+            answer = QMessageBox.question(
+                self,
+                "Overwrite Character Save?",
+                "A character save with this name already exists.\n\n"
+                f"{target_path.name}\n\n"
+                "Do you want to overwrite it?",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+
+        try:
+            shutil.copy2(
+                backup_path,
+                target_path
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Restore Failed",
+                "Could not restore the backup to the Valheim save directory:\n\n"
+                f"{e}"
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Backup Restored",
+            "The backup was restored to the Valheim character saves.\n\n"
+            f"File:\n{target_path}"
+        )
 
     def restore_backup(self):
         backup_path = self.get_selected_backup()
