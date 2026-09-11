@@ -1,5 +1,8 @@
 import json
 import os
+import shutil
+import sys
+from datetime import datetime
 
 from PySide6.QtWidgets import *
 from PySide6.QtCore import Qt, QThread, Signal
@@ -169,6 +172,72 @@ class MainWindow(QMainWindow):
             self.config["is_first_launch"] = False
             save_config(self.config)
 
+    def get_backup_directory(self):
+        backup_dir = self.config.get("backup_dir", "").strip()
+
+        if backup_dir:
+            return Path(backup_dir)
+
+        if getattr(sys, "frozen", False):
+            editor_dir = Path(sys.executable).resolve().parent
+        else:
+            editor_dir = Path(__file__).resolve().parent.parent
+
+        return editor_dir / "backups"
+
+    def create_backup(self, filename):
+        backup_root = self.get_backup_directory()
+
+        character_name = self.root_save.get(
+            "character_name",
+            "Viking"
+        ).strip()
+
+        if not character_name:
+            character_name = "Viking"
+
+        character_backup_dir = backup_root / character_name
+        character_backup_dir.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        timestamp = datetime.now().strftime(
+            "%Y-%m-%d_%H%M%S"
+        )
+
+        backup_filename = (
+            f"{character_name}_{timestamp}.fch"
+        )
+
+        backup_path = character_backup_dir / backup_filename
+
+        shutil.copy2(filename, backup_path)
+
+        return backup_path
+
+    def cleanup_old_backups(self, character_name):
+        max_backups = self.config.get(
+            "max_backups_per_character",
+            15
+        )
+
+        if max_backups == 0:
+            return
+
+        backup_dir = self.get_backup_directory() / character_name
+
+        if not backup_dir.is_dir():
+            return
+
+        backups = sorted(
+            backup_dir.glob("*.fch"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True
+        )
+
+        for old_backup in backups[max_backups:]:
+            old_backup.unlink()
 
     def show_about(self):
         msg = QMessageBox(self)
@@ -451,6 +520,20 @@ class MainWindow(QMainWindow):
             if not filename:
                 return
 
+            if self.config.get("auto_backup", True):
+                if self.current_fch and os.path.isfile(self.current_fch):
+                    backup_path = self.create_backup(self.current_fch)
+
+                    character_name = self.root_save.get(
+                        "character_name",
+                        "Viking"
+                    ).strip()
+
+                    if not character_name:
+                        character_name = "Viking"
+
+                    self.cleanup_old_backups(character_name)
+
             # 4. encode the player data back into hex and update the container
             updated_hex_payload = pack_player_data_hex(self.player_data)
             self.root_save["player_data_hex"] = updated_hex_payload
@@ -465,9 +548,18 @@ class MainWindow(QMainWindow):
             if os.path.exists(temp_wrapper_path):
                 os.remove(temp_wrapper_path)
 
+            backup_message = (
+                f"Backup created:\n{backup_path}"
+                if "backup_path" in locals()
+                else "No backup was created."
+            )
+
             QMessageBox.information(
-                self, "Success", 
-                f"Character save compiled, signed, and saved successfully!\n\nLocation:\n{filename}"
+                self,
+                "Success",
+                f"Character save compiled, signed, and saved successfully!\n\n"
+                f"Location:\n{filename}\n\n"
+                f"{backup_message}"
             )
 
             # QMessageBox.information(
