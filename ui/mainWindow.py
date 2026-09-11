@@ -15,6 +15,8 @@ from ui.inventoryTab import InventoryTab
 from ui.skillsTab import SkillsTab
 from ui.statsTab import StatsTab
 from ui.appearanceTab import AppearanceTab
+from ui.progressTab import ProgressTab
+from ui.statisticsTab import StatisticsTab
 from ui.miscTab import MiscTab
 
 from data.info import INFO_TEXT
@@ -165,12 +167,18 @@ class MainWindow(QMainWindow):
         self.skills_tab = SkillsTab()
         self.stats_tab = StatsTab()
         self.appearance_tab = AppearanceTab()
+        self.progress_tab = ProgressTab()
+        self.statistics_tab = StatisticsTab()
+
         self.misc_tab = MiscTab()
 
         self.tabs.addTab(self.inventory_tab, "Inventory")
         self.tabs.addTab(self.skills_tab, "Skills")
         self.tabs.addTab(self.stats_tab, "Stats")
         self.tabs.addTab(self.appearance_tab, "Appearance")
+        self.tabs.addTab(self.progress_tab, "Progress")
+        self.tabs.addTab(self.statistics_tab, "Statistics")
+
         self.tabs.addTab(self.misc_tab, "Misc")
 
         self.btn_open_save.clicked.connect(self.open_save_file)
@@ -452,6 +460,9 @@ class MainWindow(QMainWindow):
                 self.root_save
             )
             self.appearance_tab.load_data(self.player_data)
+            self.progress_tab.load_data(self.player_data)
+            self.statistics_tab.load_data(self.player_data, self.root_save)
+
             self.misc_tab.load_data(
                 self.player_data,
                 self.root_save
@@ -494,6 +505,8 @@ class MainWindow(QMainWindow):
                 self.skills_tab.load_data(self.player_data)
                 self.stats_tab.load_data(self.player_data, self.root_save)
                 self.appearance_tab.load_data(self.player_data)
+                self.progress_tab.load_data(self.player_data)
+                self.statistics_tab.load_data(self.player_data, self.root_save)
                 self.misc_tab.load_data(self.player_data, self.root_save)
                 
                 self.file_label.setText(f"Loaded Save: {os.path.basename(filename)} (Char: {self.root_save.get('character_name')})")
@@ -534,9 +547,18 @@ class MainWindow(QMainWindow):
             return
 
         try:
+            export_data = dict(self.root_save)
+
+            if export_data.get("player_data_hex"):
+                export_data["player_data"] = unpack_player_data_hex(
+                    export_data["player_data_hex"]
+                )
+            else:
+                export_data["player_data"] = None
+
             with open(filename, "w", encoding="utf-8") as f:
                 json.dump(
-                    self.root_save,
+                    export_data,
                     f,
                     indent=4,
                     ensure_ascii=False
