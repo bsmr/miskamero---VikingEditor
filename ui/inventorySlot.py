@@ -1,4 +1,6 @@
+from pathlib import Path
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QPushButton,
     QLabel,
@@ -33,7 +35,105 @@ def format_item_name(prefab):
 
     return name.title()
 
-def wrap_long_word(word, max_length=12):
+def get_item_icon(prefab):
+    prefab_lower = prefab.lower()
+
+    if "sword" in prefab_lower:
+        return "sword.png"
+
+    if "bow" in prefab_lower:
+        return "bow.png"
+
+    if "axe" in prefab_lower and "pickaxe" not in prefab_lower:
+        return "axe.png"
+
+    if "pickaxe" in prefab_lower:
+        return "pickaxe.png"
+
+    if "shield" in prefab_lower:
+        return "shield.png"
+
+    if "arrow" in prefab_lower:
+        return "arrow.png"
+
+    if any(word in prefab_lower for word in (
+        "armor",
+        "helmet",
+        "cape",
+        "chest",
+        "legs",
+        "shoulder",
+        "tunic",
+        "shirt",
+        "hood",
+        "hat",
+        "cloak",
+    )):
+        return "armor.png"
+
+    if any(word in prefab_lower for word in (
+        "food",
+        "meat",
+        "fish",
+        "berry",
+        "mushroom",
+        "honey",
+        "bread",
+        "cake",
+        "stew",
+    )):
+        return "food.png"
+
+    if any(word in prefab_lower for word in (
+        "potion",
+        "mead",
+    )):
+        return "potion.png"
+
+    if any(word in prefab_lower for word in (
+        "seed",
+        "plant",
+        "sapling",
+        "carrot",
+        "turnip",
+        "onion",
+    )):
+        return "plant.png"
+
+    if any(word in prefab_lower for word in (
+        "hammer",
+        "hoe",
+        "cultivator",
+        "torch",
+        "fishingrod",
+        "shovel",
+        "knife",
+        "rod",
+    )):
+        return "tool.png"
+
+    if any(word in prefab_lower for word in (
+        "ore",
+        "ingot",
+        "metal",
+    )):
+        return "metal.png"
+
+    if any(word in prefab_lower for word in (
+        "wood",
+        "stone",
+        "leather",
+        "bone",
+        "resin",
+        "feather",
+        "hide",
+    )):
+        return "material.png"
+
+    # misc
+    return "❓"
+
+def wrap_long_word(word, max_length=18):
     if len(word) <= max_length:
         return word
 
@@ -52,8 +152,15 @@ class InventorySlot(QPushButton):
         self.grid_y = y
         self.item_data = None
 
-        self.setFixedSize(96, 96)
+        self.setFixedSize(120, 120)
         self.setCursor(Qt.PointingHandCursor)
+
+        # Item icon.
+        self.icon_label = QLabel()
+        self.icon_label.setAlignment(Qt.AlignCenter)
+        self.icon_label.setAttribute(
+            Qt.WA_TransparentForMouseEvents
+        )
 
         # Main item name.
         self.name_label = QLabel()
@@ -101,6 +208,12 @@ class InventorySlot(QPushButton):
         layout.setSpacing(2)
 
         layout.addWidget(self.equipped_label, 0, Qt.AlignCenter)
+        
+        layout.addWidget(
+            self.icon_label,
+            0,
+            Qt.AlignCenter
+        )
 
         # Fixed-height area for the item name.
         name_layout = QVBoxLayout()
@@ -142,6 +255,7 @@ class InventorySlot(QPushButton):
             self.stack_label.clear()
             self.quality_label.clear()
             self.equipped_label.clear()
+            self.icon_label.clear()
 
             self.setToolTip("Empty Slot")
 
@@ -168,6 +282,37 @@ class InventorySlot(QPushButton):
             "prefab",
             "Unknown"
         )
+
+        icon = get_item_icon(prefab)
+
+        if icon == "❓":
+            self.icon_label.setText(icon)
+            self.icon_label.setStyleSheet("""
+                QLabel {
+                    color: #888888;
+                    font-size: 24px;
+                    background: transparent;
+                }
+            """)
+        else:
+            icon_path = (
+                Path(__file__).resolve().parent.parent
+                / "assets"
+                / icon
+            )
+
+            pixmap = QPixmap(str(icon_path))
+
+            self.icon_label.setPixmap(
+                pixmap.scaled(
+                    44,
+                    44,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation
+                )
+            )
+
+        self.icon_label.show()
 
         stack = self.item_data.get(
             "stack",
