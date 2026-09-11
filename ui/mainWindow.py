@@ -18,6 +18,7 @@ from ui.appearanceTab import AppearanceTab
 from ui.progressTab import ProgressTab
 from ui.statisticsTab import StatisticsTab
 from ui.characterTab import CharacterTab
+from ui.worldsTab import WorldsTab
 
 from data.info import INFO_TEXT
 
@@ -171,6 +172,7 @@ class MainWindow(QMainWindow):
         self.statistics_tab = StatisticsTab()
 
         self.character_tab = CharacterTab()
+        self.worlds_tab = WorldsTab()
 
         self.tabs.addTab(self.inventory_tab, "Inventory")
         self.tabs.addTab(self.skills_tab, "Skills")
@@ -180,6 +182,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.statistics_tab, "Statistics")
 
         self.tabs.addTab(self.character_tab, "Character")
+        self.tabs.addTab(self.worlds_tab, "Worlds")
 
         self.btn_open_save.clicked.connect(self.open_save_file)
         self.btn_save_save.clicked.connect(self.save_save_file)
@@ -468,6 +471,10 @@ class MainWindow(QMainWindow):
                 self.root_save
             )
 
+            self.worlds_tab.load_data(
+                self.root_save
+            )
+
             self.file_label.setText(
                 f"Loaded Backup: {os.path.basename(filename)} "
                 f"(Char: {self.root_save.get('character_name')})"
@@ -508,6 +515,7 @@ class MainWindow(QMainWindow):
                 self.progress_tab.load_data(self.player_data)
                 self.statistics_tab.load_data(self.player_data, self.root_save)
                 self.character_tab.load_data(self.player_data, self.root_save)
+                self.worlds_tab.load_data(self.root_save)
                 
                 self.file_label.setText(f"Loaded Save: {os.path.basename(filename)} (Char: {self.root_save.get('character_name')})")
                 QMessageBox.information(self, "Success", "Valheim Save decompiled and loaded successfully!")
