@@ -14,6 +14,8 @@ VALHEIM_CONFIG_PATH = (
 DEFAULT_CONFIG = {
     "valheim_dir": "",
     "auto_backup": True,
+    "backup_dir": "",
+    "max_backups_per_character": 15,
     "is_first_launch": True
 }
 
