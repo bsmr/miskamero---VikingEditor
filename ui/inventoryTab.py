@@ -141,7 +141,7 @@ class InventoryTab(QWidget):
             QMessageBox.warning(
                 self,
                 "Invalid Item",
-                "The clipboard does not contain a valid Valheim Editor item."
+                "The clipboard does not contain a valid VikingEditor item."
             )
             return
 
@@ -149,7 +149,7 @@ class InventoryTab(QWidget):
             QMessageBox.warning(
                 self,
                 "Invalid Item",
-                "The clipboard does not contain a Valheim Editor item."
+                "The clipboard does not contain a VikingEditor item."
             )
             return
 
