@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QLabel,
     QMessageBox,
+    QComboBox,
 )
 
 
@@ -27,10 +28,28 @@ class BackupManagerDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
+        layout.addWidget(QLabel("Character"))
+
+        self.character_filter = QComboBox()
+        layout.addWidget(self.character_filter)
+
         layout.addWidget(QLabel("Character Backups"))
 
         self.backup_list = QListWidget()
+        self.backup_list.setSpacing(4)
+
+        self.character_filter.currentTextChanged.connect(
+            self.filter_backups
+        )
+
         layout.addWidget(self.backup_list)
+        layout.addWidget(self.backup_list)
+
+        self.backup_info = QLabel(
+            "Select a backup to view its details."
+        )
+        self.backup_info.setWordWrap(True)
+        layout.addWidget(self.backup_info)
 
         button_layout = QHBoxLayout()
 
@@ -59,6 +78,10 @@ class BackupManagerDialog(QDialog):
             lambda _: self.open_backup()
         )
 
+        self.backup_list.currentItemChanged.connect(
+            self.update_backup_info
+        )
+
         self.load_backups()
 
     def open_backups_folder(self):
@@ -71,11 +94,33 @@ class BackupManagerDialog(QDialog):
 
         os.startfile(str(self.backup_directory))
 
+    def filter_backups(self, character_name):
+        for index in range(self.backup_list.count()):
+            item = self.backup_list.item(index)
+
+            backup_path = Path(
+                item.data(256)
+            )
+
+            if character_name == "All Characters":
+                item.setHidden(False)
+                continue
+
+            item.setHidden(
+                backup_path.parent.name != character_name
+            )
+
     def load_backups(self):
         self.backup_list.clear()
+        self.character_filter.blockSignals(True)
+        self.character_filter.clear()
+        self.character_filter.addItem("All Characters")
 
         if not self.backup_directory.is_dir():
+            self.character_filter.blockSignals(False)
             return
+
+        character_names = []
 
         for character_dir in sorted(self.backup_directory.iterdir()):
             if not character_dir.is_dir():
@@ -87,9 +132,32 @@ class BackupManagerDialog(QDialog):
                 reverse=True
             )
 
+            if not backups:
+                continue
+
+            character_names.append(character_dir.name)
+
             for backup_file in backups:
+                modified_time = backup_file.stat().st_mtime
+
+                from datetime import datetime
+
+                created_time = datetime.fromtimestamp(
+                    modified_time
+                ).strftime("%B %d, %Y %H:%M:%S")
+
+                size = backup_file.stat().st_size
+
+                if size < 1024:
+                    size_text = f"{size} B"
+                elif size < 1024 * 1024:
+                    size_text = f"{size / 1024:.1f} KB"
+                else:
+                    size_text = f"{size / (1024 * 1024):.1f} MB"
+
                 item = QListWidgetItem(
-                    f"{character_dir.name} — {backup_file.name}"
+                    f"{character_dir.name}\n"
+                    f"{created_time} · {size_text}"
                 )
 
                 item.setData(
@@ -98,6 +166,12 @@ class BackupManagerDialog(QDialog):
                 )
 
                 self.backup_list.addItem(item)
+
+        self.character_filter.addItems(
+            character_names
+        )
+
+        self.character_filter.blockSignals(False)
 
     def get_selected_backup(self):
         item = self.backup_list.currentItem()
@@ -111,6 +185,48 @@ class BackupManagerDialog(QDialog):
             return None
 
         return Path(item.data(256))
+
+    def update_backup_info(self, current, previous):
+        if current is None:
+            self.backup_info.setText(
+                "Select a backup to view its details."
+            )
+            return
+
+        backup_path = Path(
+            current.data(256)
+        )
+
+        if not backup_path.is_file():
+            self.backup_info.setText(
+                "The selected backup file no longer exists."
+            )
+            return
+
+        from datetime import datetime
+
+        character_name = backup_path.parent.name
+
+        created_time = datetime.fromtimestamp(
+            backup_path.stat().st_mtime
+        ).strftime("%B %d, %Y %H:%M:%S")
+
+        size = backup_path.stat().st_size
+
+        if size < 1024:
+            size_text = f"{size} B"
+        elif size < 1024 * 1024:
+            size_text = f"{size / 1024:.1f} KB"
+        else:
+            size_text = f"{size / (1024 * 1024):.1f} MB"
+
+        self.backup_info.setText(
+            f"<b>Selected Backup</b><br><br>"
+            f"<b>Character:</b> {character_name}<br>"
+            f"<b>Created:</b> {created_time}<br>"
+            f"<b>Size:</b> {size_text}<br>"
+            f"<b>Location:</b> {backup_path}"
+        )
 
     def open_backup(self):
         backup_path = self.get_selected_backup()
