@@ -2,7 +2,7 @@ import json
 import os
 
 from PySide6.QtWidgets import *
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Signal
 from pathlib import Path
 
 from ui.inventoryTab import InventoryTab
@@ -36,6 +36,38 @@ from subscripts.itemDatabase import (
     ITEM_DATABASE_PATH,
     update_item_database as scan_item_database
 )
+
+class ItemDatabaseWorker(QThread):
+    progress = Signal(int, int, str)
+    finished = Signal(object)
+    error = Signal(str)
+
+    def __init__(self, valheim_dir):
+        super().__init__()
+        self.valheim_dir = valheim_dir
+        self.cancel_requested = False
+
+    def run(self):
+        try:
+            item_database = scan_item_database(
+                self.valheim_dir,
+                progress_callback=self.update_progress,
+                cancel_callback=self.is_cancelled
+            )
+
+            self.finished.emit(item_database)
+
+        except Exception as e:
+            self.error.emit(str(e))
+
+    def update_progress(self, current, total, message):
+        self.progress.emit(current, total, message)
+
+    def is_cancelled(self):
+        return self.cancel_requested
+
+    def cancel(self):
+        self.cancel_requested = True
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -114,8 +146,6 @@ class MainWindow(QMainWindow):
         msg.exec()
 
     def check_item_database(self):
-        """Create the item database automatically if it does not exist."""
-
         if ITEM_DATABASE_PATH.exists():
             return
 
@@ -132,8 +162,6 @@ class MainWindow(QMainWindow):
         self.update_item_database()
 
     def update_item_database(self):
-        """Find Valheim and scan its bundles to refresh the item database."""
-
         valheim_dir = load_saved_valheim_path()
 
         # Use the saved path if it still points to a valid installation.
@@ -197,6 +225,7 @@ class MainWindow(QMainWindow):
         valheim_dir = Path(valheim_dir)
 
         self.btn_update_items.setEnabled(False)
+        cancelled = False
 
         progress = QProgressDialog(
             "Loading Valheim bundles...",
@@ -211,11 +240,13 @@ class MainWindow(QMainWindow):
             Qt.WindowModality.ApplicationModal
         )
         progress.setMinimumDuration(0)
-        progress.setCancelButton(None)
+        progress.setCancelButton(
+            QPushButton("Cancel")
+        )
         progress.setAutoClose(False)
         progress.show()
 
-        QApplication.processEvents()
+        worker = ItemDatabaseWorker(valheim_dir)
 
         def update_progress(current, total, message):
             progress.setLabelText(message)
@@ -225,23 +256,21 @@ class MainWindow(QMainWindow):
                     int(current / total * 100)
                 )
 
-            QApplication.processEvents()
-
-        try:
-            item_database = scan_item_database(
-                valheim_dir,
-                progress_callback=update_progress
-            )
-
+        def cancel_update():
+            worker.cancel()
             progress.setLabelText(
-                "Finishing item database..."
+                "Cancelling item database update..."
             )
-            progress.setValue(100)
-            QApplication.processEvents()
+            progress.setCancelButton(None)
+
+        def update_finished(item_database):
+            progress.close()
+
+            if item_database is None:
+                self.btn_update_items.setEnabled(True)
+                return
 
             reload_item_database()
-
-            progress.close()
 
             QMessageBox.information(
                 self,
@@ -251,18 +280,31 @@ class MainWindow(QMainWindow):
                 f"Items found: {len(item_database)}"
             )
 
-        except Exception as e:
+            self.btn_update_items.setEnabled(True)
+
+            worker.deleteLater()
+
+        def update_error(message):
             progress.close()
 
             QMessageBox.critical(
                 self,
                 "Item Database Error",
                 "Could not update the Valheim item database:\n\n"
-                f"{str(e)}"
+                f"{message}"
             )
 
-        finally:
             self.btn_update_items.setEnabled(True)
+
+            worker.deleteLater()
+
+        worker.progress.connect(update_progress)
+        worker.finished.connect(update_finished)
+        worker.error.connect(update_error)
+
+        progress.canceled.connect(cancel_update)
+
+        worker.start()
     
     def open_save_file(self):
         filename, _ = QFileDialog.getOpenFileName(

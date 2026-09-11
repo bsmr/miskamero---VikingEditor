@@ -143,7 +143,7 @@ def find_valheim_bundles(valheim_dir):
     ]
 
 
-def update_item_database(valheim_dir, progress_callback=None):
+def update_item_database(valheim_dir, progress_callback=None, cancel_callback=None):
     bundle_files = find_valheim_bundles(valheim_dir)
 
     if bundle_files is None:
@@ -163,16 +163,12 @@ def update_item_database(valheim_dir, progress_callback=None):
 
     for index, bundle_path in enumerate(bundle_files, 1):
         message = f"Loading {index}/{len(bundle_files)}"
-
-        print(
-            f"\r{message}",
-            end="",
-            flush=True,
-        )
-
+        print(f"\r{message}", end="", flush=True)
         if progress_callback:
             progress_callback(index, len(bundle_files), message)
-
+        if cancel_callback and cancel_callback():
+            print("\nItem database update cancelled.")
+            return None
         env.load_file(str(bundle_path))
 
     print()
