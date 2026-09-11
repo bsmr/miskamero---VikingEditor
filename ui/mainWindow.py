@@ -1,29 +1,98 @@
 import json
 import os
+import shutil
+import sys
+from datetime import datetime
 
 from PySide6.QtWidgets import *
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Signal
+from pathlib import Path
+
+from ui.settingsDialog import SettingsDialog
+from ui.backupManagerDialog import BackupManagerDialog
 
 from ui.inventoryTab import InventoryTab
 from ui.skillsTab import SkillsTab
 from ui.statsTab import StatsTab
 from ui.appearanceTab import AppearanceTab
-from ui.miscTab import MiscTab
-from ui.valheim_detection import is_valheim_running, valheim_warning_message
+from ui.progressTab import ProgressTab
+from ui.statisticsTab import StatisticsTab
+from ui.characterTab import CharacterTab
+from ui.worldsTab import WorldsTab
+
+from data.info import INFO_TEXT
+
+from ui.valheim_detection import (
+    is_valheim_running,
+    valheim_warning_message,
+    find_valheim_installation,
+    is_valid_valheim_installation,
+    load_saved_valheim_path,
+    save_valheim_path,
+    load_config,
+    save_config
+)
 
 from subscripts.fchUtil import (
     decompile_fch,
     compile_fch
 )
 
+from subscripts.newCharacter import (
+    create_new_character
+)
+
 from subscripts.playerDataUtil import (
     unpack_player_data_hex,
-    pack_player_data_hex
+    pack_player_data_hex,
+    reload_item_database
 )
+
+from subscripts.itemDatabase import (
+    ITEM_DATABASE_PATH,
+    update_item_database as scan_item_database
+)
+
+class ItemDatabaseWorker(QThread):
+    progress = Signal(int, int, str)
+    finished = Signal(object)
+    error = Signal(str)
+
+    def __init__(self, valheim_dir):
+        super().__init__()
+        self.valheim_dir = valheim_dir
+        self.cancel_requested = False
+
+    def run(self):
+        try:
+            item_database = scan_item_database(
+                self.valheim_dir,
+                progress_callback=self.update_progress,
+                cancel_callback=self.is_cancelled
+            )
+
+            self.finished.emit(item_database)
+
+        except Exception as e:
+            self.error.emit(str(e))
+
+    def update_progress(self, current, total, message):
+        self.progress.emit(current, total, message)
+
+    def is_cancelled(self):
+        return self.cancel_requested
+
+    def cancel(self):
+        self.cancel_requested = True
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+
+        # check editor conf
+        self.config = load_config()
+        save_config(self.config)
+
 
         # valheim check, nöfnöf
         if is_valheim_running():
@@ -38,6 +107,7 @@ class MainWindow(QMainWindow):
         self.root_save = None       # Container data (.fch level dict)
         self.player_data = None     # Decoded character attributes dict
         self.current_fch = None
+        self.loaded_backup = False
 
         self.setWindowTitle("Viking Editor")
         self.resize(1200, 800)
@@ -45,17 +115,51 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
 
+        menu_bar = self.menuBar()
+
+        file_menu = menu_bar.addMenu("File")
+        help_menu = menu_bar.addMenu("Help")
+
+        new_character_action = file_menu.addAction("New Character...")
+        open_save_action = file_menu.addAction("Open Save File")
+        open_json_action = file_menu.addAction("Open JSON")
+        close_json_action = file_menu.addAction("Close JSON")
+        backup_manager_action = file_menu.addAction("Manage Backups...")
+        export_json_action = file_menu.addAction("Export Decompiled JSON...")
+
+        file_menu.addSeparator()
+
+        file_menu.addSeparator()
+
+        self.update_items_action = file_menu.addAction("Update Item Database")
+        settings_action = file_menu.addAction("Settings")
+
+        file_menu.addSeparator()
+
+        exit_action = file_menu.addAction("Exit")
+        about_action = help_menu.addAction("About Viking Editor")
+
+        new_character_action.triggered.connect(self.new_character)
+        open_save_action.triggered.connect(self.open_save_file)
+        open_json_action.triggered.connect(self.open_json_file)
+        backup_manager_action.triggered.connect(self.show_backup_manager)
+        export_json_action.triggered.connect(self.export_decompiled_json)
+
+        self.update_items_action.triggered.connect(self.update_item_database)
+        settings_action.triggered.connect(self.show_settings)
+
+        exit_action.triggered.connect(self.close)
+
+        about_action.triggered.connect(self.show_about)
+
         main_layout = QVBoxLayout(central)
+
         button_layout = QHBoxLayout()
 
-        self.btn_open_save = QPushButton("Open Save File (.fch)")
-        self.btn_open_json = QPushButton("Open JSON")
-        self.btn_save_json = QPushButton("Save JSON")
+        self.btn_open_save = QPushButton("Open Save")
         self.btn_save_save = QPushButton("Save Savefile")
 
         button_layout.addWidget(self.btn_open_save)
-        button_layout.addWidget(self.btn_open_json)
-        button_layout.addWidget(self.btn_save_json)
         button_layout.addWidget(self.btn_save_save)
 
         main_layout.addLayout(button_layout)
@@ -70,38 +174,429 @@ class MainWindow(QMainWindow):
         self.skills_tab = SkillsTab()
         self.stats_tab = StatsTab()
         self.appearance_tab = AppearanceTab()
-        self.misc_tab = MiscTab()
+        self.progress_tab = ProgressTab()
+        self.statistics_tab = StatisticsTab()
+
+        self.character_tab = CharacterTab()
+        self.worlds_tab = WorldsTab()
 
         self.tabs.addTab(self.inventory_tab, "Inventory")
         self.tabs.addTab(self.skills_tab, "Skills")
         self.tabs.addTab(self.stats_tab, "Stats")
         self.tabs.addTab(self.appearance_tab, "Appearance")
-        self.tabs.addTab(self.misc_tab, "Misc")
+        self.tabs.addTab(self.progress_tab, "Progress")
+        self.tabs.addTab(self.statistics_tab, "Statistics")
+
+        self.tabs.addTab(self.character_tab, "Character")
+        self.tabs.addTab(self.worlds_tab, "Worlds")
 
         self.btn_open_save.clicked.connect(self.open_save_file)
-        self.btn_open_json.clicked.connect(self.open_json_file)
-        self.btn_save_json.clicked.connect(self.save_json_file)
         self.btn_save_save.clicked.connect(self.save_save_file)
 
+        self.check_valheim_installation()
+        self.check_item_database()
+
+        if self.config.get("is_first_launch", True):
+            self.show_about()
+            self.config["is_first_launch"] = False
+            save_config(self.config)
+
+    def get_backup_directory(self):
+        backup_dir = self.config.get("backup_dir", "").strip()
+
+        if backup_dir:
+            return Path(backup_dir)
+
+        if getattr(sys, "frozen", False):
+            editor_dir = Path(sys.executable).resolve().parent
+        else:
+            editor_dir = Path(__file__).resolve().parent.parent
+
+        return editor_dir / "backups"
+
+    def create_backup(self, filename):
+        backup_root = self.get_backup_directory()
+
+        character_name = self.root_save.get(
+            "character_name",
+            "Viking"
+        ).strip()
+
+        if not character_name:
+            character_name = "Viking"
+
+        character_backup_dir = backup_root / character_name
+        character_backup_dir.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        timestamp = datetime.now().strftime(
+            "%Y-%m-%d_%H%M%S"
+        )
+
+        backup_filename = (
+            f"{character_name}_{timestamp}.fch"
+        )
+
+        backup_path = character_backup_dir / backup_filename
+
+        shutil.copy2(filename, backup_path)
+
+        return backup_path
+
+    def cleanup_old_backups(self, character_name):
+        max_backups = self.config.get(
+            "max_backups_per_character",
+            15
+        )
+
+        if max_backups == 0:
+            return
+
+        backup_dir = self.get_backup_directory() / character_name
+
+        if not backup_dir.is_dir():
+            return
+
+        backups = sorted(
+            backup_dir.glob("*.fch"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True
+        )
+
+        for old_backup in backups[max_backups:]:
+            old_backup.unlink()
+
+    def show_about(self):
+        msg = QMessageBox(self)
+        msg.setWindowTitle("About Viking Editor")
+        msg.setText(INFO_TEXT)
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextBrowserInteraction
+        )
+        msg.exec()
+
+    def show_settings(self):
+        dialog = SettingsDialog(self.config, self)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            settings = dialog.get_settings()
+            self.config.update(settings)
+            save_config(self.config)
+
+    def show_backup_manager(self):
+        dialog = BackupManagerDialog(
+            self.get_backup_directory(),
+            self
+        )
+        dialog.exec()
+
+    def check_valheim_installation(self):
+        valheim_dir = load_saved_valheim_path()
+
+        if valheim_dir is not None:
+            if is_valid_valheim_installation(valheim_dir):
+                return True
+
+        valheim_dir = find_valheim_installation()
+
+        if valheim_dir is not None:
+            save_valheim_path(valheim_dir)
+            return True
+
+        choice = QMessageBox.question(
+            self,
+            "Valheim Installation Not Found",
+            "The editor could not automatically find your Valheim installation.\n\n"
+            "Would you like to select the Valheim installation folder manually?",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        if choice != QMessageBox.StandardButton.Yes:
+            return False
+
+        selected_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Select Valheim Installation Folder"
+        )
+
+        if not selected_dir:
+            return False
+
+        valheim_dir = Path(selected_dir)
+
+        if not is_valid_valheim_installation(valheim_dir):
+            QMessageBox.critical(
+                self,
+                "Invalid Valheim Installation",
+                "The selected folder does not appear to be a valid "
+                "Valheim installation.\n\n"
+                "Please select the folder containing:\n"
+                "valheim_Data\\StreamingAssets\\SoftRef\\Bundles"
+            )
+            return False
+
+        save_valheim_path(valheim_dir)
+
+        return True
+
+    def check_item_database(self):
+        if ITEM_DATABASE_PATH.exists():
+            return
+
+        self.update_item_database()
+
+    def update_item_database(self):
+        valheim_dir = load_saved_valheim_path()
+
+        if valheim_dir is None or not is_valid_valheim_installation(valheim_dir):
+            if not self.check_valheim_installation():
+                return
+
+            valheim_dir = load_saved_valheim_path()
+
+        if valheim_dir is None:
+            return
+
+        valheim_dir = Path(valheim_dir)
+
+        self.update_items_action.setEnabled(False)
+
+        progress = QProgressDialog(
+            "Loading Valheim bundles...",
+            None,
+            0,
+            100,
+            self
+        )
+
+        progress.setWindowTitle("Updating Item Database")
+        progress.setWindowModality(
+            Qt.WindowModality.ApplicationModal
+        )
+        progress.setMinimumDuration(0)
+        progress.setCancelButton(
+            QPushButton("Cancel")
+        )
+        progress.setAutoClose(False)
+        progress.show()
+
+        worker = ItemDatabaseWorker(valheim_dir)
+
+        def update_progress(current, total, message):
+            progress.setLabelText(message)
+
+            if total > 0:
+                progress.setValue(
+                    int(current / total * 100)
+                )
+
+        def cancel_update():
+            worker.cancel()
+            progress.setLabelText(
+                "Cancelling item database update..."
+            )
+            progress.setCancelButton(None)
+
+        def update_finished(item_database):
+            progress.close()
+
+            if item_database is None:
+                self.update_items_action.setEnabled(True)
+                return
+
+            reload_item_database()
+
+            QMessageBox.information(
+                self,
+                "Item Database Updated",
+                "Valheim item database updated successfully.\n\n"
+                f"Valheim installation:\n{valheim_dir}\n\n"
+                f"Items found: {len(item_database)}"
+            )
+
+            self.update_items_action.setEnabled(True)
+
+            worker.deleteLater()
+
+        def update_error(message):
+            progress.close()
+
+            QMessageBox.critical(
+                self,
+                "Item Database Error",
+                "Could not update the Valheim item database:\n\n"
+                f"{message}"
+            )
+
+            self.update_items_action.setEnabled(True)
+
+            worker.deleteLater()
+
+        worker.progress.connect(update_progress)
+        worker.finished.connect(update_finished)
+        worker.error.connect(update_error)
+
+        progress.canceled.connect(cancel_update)
+
+        worker.start()
+
+    def load_backup_file(self, filename):
         try:
-            with open("info.txt", "r", encoding="utf-8") as f:
-                info_text = f.read()
+            self.root_save = decompile_fch(str(filename))
+            self.loaded_backup = True
 
-            msg = QMessageBox(self)
-            msg.setWindowTitle("Information")
-            msg.setText(info_text)
+            player_hex = self.root_save.get("player_data_hex")
 
-            # Enable clickable links
-            msg.setTextFormat(Qt.TextFormat.RichText)
-            msg.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+            if not player_hex:
+                QMessageBox.warning(
+                    self,
+                    "Empty Backup",
+                    "The backup contains no player data."
+                )
+                return False
 
-            msg.exec()
+            self.player_data = unpack_player_data_hex(player_hex)
+
+            self.inventory_tab.load_data(self.player_data)
+            self.skills_tab.load_data(self.player_data)
+            self.stats_tab.load_data(
+                self.player_data,
+                self.root_save
+            )
+            self.appearance_tab.load_data(self.player_data)
+            self.progress_tab.load_data(self.player_data)
+            self.statistics_tab.load_data(self.player_data, self.root_save)
+
+            self.character_tab.load_data(
+                self.player_data,
+                self.root_save
+            )
+
+            self.worlds_tab.load_data(
+                self.root_save
+            )
+
+            self.file_label.setText(
+                f"Loaded Backup: {os.path.basename(filename)} "
+                f"(Char: {self.root_save.get('character_name')})"
+            )
+
+            return True
 
         except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error Loading Backup",
+                f"Failed to load backup:\n\n{str(e)}"
+            )
+            return False
+
+    def new_character(self):
+        character_name, ok = QInputDialog.getText(
+            self,
+            "New Character",
+            "Character name:",
+            QLineEdit.EchoMode.Normal,
+            "New Viking"
+        )
+
+        if not ok:
+            return
+
+        character_name = character_name.strip()
+
+        if not character_name:
             QMessageBox.warning(
                 self,
-                "Info Load Error",
-                f"Could not load info.txt:\n{str(e)}\nPlease read the info.txt file manually for important information!"
+                "Invalid Character Name",
+                "Please enter a character name."
+            )
+            return
+
+        try:
+            self.root_save = create_new_character(
+                character_name
+            )
+
+            player_hex = self.root_save.get(
+                "player_data_hex"
+            )
+
+            if not player_hex:
+                raise ValueError(
+                    "The generated character contains no player data."
+                )
+
+            self.player_data = unpack_player_data_hex(
+                player_hex
+            )
+
+            self.current_fch = None
+            self.loaded_backup = False
+
+            self.inventory_tab.load_data(
+                self.player_data
+            )
+
+            self.skills_tab.load_data(
+                self.player_data
+            )
+
+            self.stats_tab.load_data(
+                self.player_data,
+                self.root_save
+            )
+
+            self.appearance_tab.load_data(
+                self.player_data
+            )
+
+            self.progress_tab.load_data(
+                self.player_data
+            )
+
+            self.statistics_tab.load_data(
+                self.player_data,
+                self.root_save
+            )
+
+            self.character_tab.load_data(
+                self.player_data,
+                self.root_save
+            )
+
+            self.worlds_tab.load_data(
+                self.root_save
+            )
+
+            self.file_label.setText(
+                f"New Character: {character_name}"
+            )
+
+            QMessageBox.information(
+                self,
+                "New Character",
+                f"New character created successfully!\n\n"
+                f"Character: {character_name}\n"
+                f"Player ID: {self.root_save['player_id']}\n\n"
+                f"The character has not been saved to disk yet."
+            )
+
+        except Exception as e:
+            self.root_save = None
+            self.player_data = None
+            self.current_fch = None
+            self.loaded_backup = False
+
+            QMessageBox.critical(
+                self,
+                "New Character Error",
+                f"Could not create the new character:\n\n{e}"
             )
 
     def open_save_file(self):
@@ -115,6 +610,7 @@ class MainWindow(QMainWindow):
             # 1. Unpack container
             self.root_save = decompile_fch(filename)
             self.current_fch = filename
+            self.loaded_backup = False
 
             # 2. Extract nested player hex bytes
             player_hex = self.root_save.get("player_data_hex")
@@ -125,7 +621,10 @@ class MainWindow(QMainWindow):
                 self.skills_tab.load_data(self.player_data)
                 self.stats_tab.load_data(self.player_data, self.root_save)
                 self.appearance_tab.load_data(self.player_data)
-                self.misc_tab.load_data(self.player_data, self.root_save)
+                self.progress_tab.load_data(self.player_data)
+                self.statistics_tab.load_data(self.player_data, self.root_save)
+                self.character_tab.load_data(self.player_data, self.root_save)
+                self.worlds_tab.load_data(self.root_save)
                 
                 self.file_label.setText(f"Loaded Save: {os.path.basename(filename)} (Char: {self.root_save.get('character_name')})")
                 QMessageBox.information(self, "Success", "Valheim Save decompiled and loaded successfully!")
@@ -134,6 +633,68 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             QMessageBox.critical(self, "Error loading save", f"Failed to parse file:\n{str(e)}")
+
+    def export_decompiled_json(self):
+        if not self.root_save:
+            QMessageBox.warning(
+                self,
+                "No Save Loaded",
+                "Please load a Valheim character save first."
+            )
+            return
+
+        char_name = self.root_save.get(
+            "character_name",
+            "Viking"
+        ).strip()
+
+        if not char_name:
+            char_name = "Viking"
+
+        default_filename = f"{char_name}_decompiled.json"
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Decompiled JSON",
+            default_filename,
+            "JSON Files (*.json)"
+        )
+
+        if not filename:
+            return
+
+        try:
+            export_data = dict(self.root_save)
+
+            if export_data.get("player_data_hex"):
+                export_data["player_data"] = unpack_player_data_hex(
+                    export_data["player_data_hex"]
+                )
+            else:
+                export_data["player_data"] = None
+
+            with open(filename, "w", encoding="utf-8") as f:
+                json.dump(
+                    export_data,
+                    f,
+                    indent=4,
+                    ensure_ascii=False
+                )
+
+            QMessageBox.information(
+                self,
+                "JSON Exported",
+                "The save was decompiled successfully.\n\n"
+                f"JSON file:\n{filename}"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Export Failed",
+                "Could not export the decompiled save:\n\n"
+                f"{e}"
+            )
 
     def open_json_file(self):
         # filename, _ = QFileDialog.getOpenFileName(
@@ -152,7 +713,6 @@ class MainWindow(QMainWindow):
         # except Exception as e:
         #     QMessageBox.critical(self, "Error", f"Failed to open JSON:\n{str(e)}")
         QMessageBox.information(self, "Feature WIP", "Opening JSON files is currently a work in progress and not yet implemented.")
-
 
     def save_json_file(self):
         # if not self.player_data:
@@ -194,16 +754,27 @@ class MainWindow(QMainWindow):
             self.skills_tab.save_changes()
             self.stats_tab.save_changes()
             self.appearance_tab.save_changes()
-            self.misc_tab.save_changes()
+            self.character_tab.save_changes()
 
             # 2. update
             char_name = self.root_save.get("character_name", "Viking").strip()
             
             # filename: lowercase name + .fch
-            suggested_filename = f"{char_name.lower()}.fch"
+            if self.loaded_backup:
+                suggested_filename = f"{char_name.lower()}_restored.fch"
+            else:
+                suggested_filename = f"{char_name.lower()}.fch"
 
-            default_dir = os.path.dirname(self.current_fch) if getattr(self, 'current_fch', None) else ""
-            default_save_path = os.path.join(default_dir, suggested_filename)
+            default_dir = (
+                os.path.dirname(self.current_fch)
+                if getattr(self, "current_fch", None)
+                else ""
+            )
+
+            default_save_path = os.path.join(
+                default_dir,
+                suggested_filename
+            )
 
             # 3. open save dialog
             filename, _ = QFileDialog.getSaveFileName(
@@ -214,6 +785,20 @@ class MainWindow(QMainWindow):
             )
             if not filename:
                 return
+
+            if self.config.get("auto_backup", True):
+                if self.current_fch and os.path.isfile(self.current_fch):
+                    backup_path = self.create_backup(self.current_fch)
+
+                    character_name = self.root_save.get(
+                        "character_name",
+                        "Viking"
+                    ).strip()
+
+                    if not character_name:
+                        character_name = "Viking"
+
+                    self.cleanup_old_backups(character_name)
 
             # 4. encode the player data back into hex and update the container
             updated_hex_payload = pack_player_data_hex(self.player_data)
@@ -229,9 +814,18 @@ class MainWindow(QMainWindow):
             if os.path.exists(temp_wrapper_path):
                 os.remove(temp_wrapper_path)
 
+            backup_message = (
+                f"Backup created:\n{backup_path}"
+                if "backup_path" in locals()
+                else "No backup was created."
+            )
+
             QMessageBox.information(
-                self, "Success", 
-                f"Character save compiled, signed, and saved successfully!\n\nLocation:\n{filename}"
+                self,
+                "Success",
+                f"Character save compiled, signed, and saved successfully!\n\n"
+                f"Location:\n{filename}\n\n"
+                f"{backup_message}"
             )
 
             # QMessageBox.information(
@@ -245,6 +839,7 @@ class MainWindow(QMainWindow):
             # )
             
             self.current_fch = filename
+            self.loaded_backup = False
 
         except Exception as e:
             if 'temp_wrapper_path' in locals() and os.path.exists(temp_wrapper_path):

@@ -82,7 +82,7 @@ class StatsTab(QWidget):
         main_layout.addLayout(top_layout)
 
         # 3. Guardian Power
-        gp_group = QGroupBox("Guardian Power")
+        gp_group = QGroupBox("Forsaken Power")
         gp_layout = QFormLayout(gp_group)
 
         self.gp_combo = QComboBox()
