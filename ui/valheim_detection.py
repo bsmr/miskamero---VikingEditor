@@ -5,8 +5,9 @@ import json
 from pathlib import Path
 from typing import Optional
 
+# LOCALAPPDATA on Windows, XDG config directory elsewhere.
 VALHEIM_CONFIG_PATH = (
-    Path(os.environ["LOCALAPPDATA"])
+    Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".config")
     / "VikingEditor"
     / "VikingConfig.json"
 )
@@ -25,7 +26,7 @@ def is_valheim_running() -> bool:
 
         for proc in processes:
             try:
-                proc_name = proc.info['name'].lower()
+                proc_name = (proc.info['name'] or "").lower()
 
                 if 'valheim' in proc_name:
                     return True
@@ -51,7 +52,7 @@ def get_valheim_process_info() -> Optional[dict]:
 
         for proc in processes:
             try:
-                proc_name = proc.info['name'].lower()
+                proc_name = (proc.info['name'] or "").lower()
 
                 if 'valheim' in proc_name:
                     return {
@@ -106,19 +107,23 @@ def is_valid_valheim_installation(path: Path) -> bool:
 def get_steam_installations() -> list[Path]:
     installations = []
 
-    program_files_paths = [
-        os.environ.get("PROGRAMFILES(X86)"),
-        os.environ.get("PROGRAMFILES"),
-        os.environ.get("LOCALAPPDATA"),
+    candidates = [
+        Path(base) / "Steam"
+        for base in (
+            os.environ.get("PROGRAMFILES(X86)"),
+            os.environ.get("PROGRAMFILES"),
+            os.environ.get("LOCALAPPDATA"),
+        )
+        if base
     ]
 
-    for program_files in program_files_paths:
-        if not program_files:
-            continue
+    # Linux Steam: ~/.steam/steam is the canonical symlink,
+    # ~/.local/share/Steam the flatpak-less default location.
+    candidates.append(Path.home() / ".steam" / "steam")
+    candidates.append(Path.home() / ".local" / "share" / "Steam")
 
-        steam_path = Path(program_files) / "Steam"
-
-        if steam_path.is_dir():
+    for steam_path in candidates:
+        if steam_path.is_dir() and steam_path not in installations:
             installations.append(steam_path)
 
     return installations
@@ -257,11 +262,29 @@ def save_valheim_path(valheim_dir):
     save_config(config)
 
 def get_valheim_character_save_directory() -> Path:
+    userprofile = os.environ.get("USERPROFILE")
+
+    if userprofile:
+        return (
+            Path(userprofile)
+            / "AppData"
+            / "LocalLow"
+            / "IronGate"
+            / "Valheim"
+            / "characters"
+        )
+
+    # Linux: the Proton prefix keeps local saves, but Steam Cloud
+    # mirrors them into userdata/<steam-id>/892970/remote.
+    for steam_path in get_steam_installations():
+        for remote in sorted(
+            steam_path.glob("userdata/*/892970/remote/characters")
+        ):
+            return remote
+
     return (
-        Path(os.environ["USERPROFILE"])
-        / "AppData"
-        / "LocalLow"
-        / "IronGate"
-        / "Valheim"
-        / "characters"
+        Path.home()
+        / ".local" / "share" / "Steam" / "steamapps" / "compatdata"
+        / "892970" / "pfx" / "drive_c" / "users" / "steamuser"
+        / "AppData" / "LocalLow" / "IronGate" / "Valheim" / "characters"
     )
