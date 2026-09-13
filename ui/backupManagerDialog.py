@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QComboBox,
 )
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices
 
 
 class BackupManagerDialog(QDialog):
@@ -126,14 +128,16 @@ class BackupManagerDialog(QDialog):
         self.load_backups()
 
     def open_backups_folder(self):
-        import os
-
         self.backup_directory.mkdir(
             parents=True,
             exist_ok=True
         )
 
-        os.startfile(str(self.backup_directory))
+        # os.startfile is Windows-only; Qt picks the right file
+        # manager on every platform.
+        QDesktopServices.openUrl(
+            QUrl.fromLocalFile(str(self.backup_directory))
+        )
 
     def filter_backups(self, character_name):
         for index in range(self.backup_list.count()):
