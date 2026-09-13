@@ -21,6 +21,9 @@ VALHEIM_BEARDS = {
     "Beard9": "Trobadour",
     "Beard2": "Twin Braids",
     "Beard24": "Waxed",
+    "Beard20": "Spiky",
+    "Beard18": "Jarl Braids",
+    "Beard17": "Neat"
 }
 
 sorted_beards = dict(
