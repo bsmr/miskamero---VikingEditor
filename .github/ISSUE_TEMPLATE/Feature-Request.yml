@@ -1,0 +1,61 @@
+name: Feature request
+description: Suggest an idea or improvement for VikingEditor
+title: "[Feature]: "
+labels:
+  - enhancement
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement to VikingEditor!
+
+        Please explain what you would like to see and why it would be useful.
+
+  - type: textarea
+    id: feature
+    attributes:
+      label: What would you like?
+      description: Describe the feature or improvement you would like to see.
+      placeholder: I would like VikingEditor to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Why would this be useful?
+      description: Explain what problem this would solve or how it would improve VikingEditor.
+      placeholder: This would be useful because...
+    validations:
+      required: true
+
+  - type: textarea
+    id: behavior
+    attributes:
+      label: How should it work?
+      description: Describe how you would expect the feature to behave.
+      placeholder: |
+        For example:
+        1. Open ...
+        2. Select ...
+        3. The editor should ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Example
+      description: If applicable, provide an example of how the feature could be used.
+      placeholder: An example of this feature would be...
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional_information
+    attributes:
+      label: Additional information
+      description: Add any other ideas, screenshots, references, or implementation suggestions.
+    validations:
+      required: false

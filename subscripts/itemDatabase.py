@@ -1,13 +1,15 @@
 from pathlib import Path
 import json
+import os
 
 import UnityPy
 from UnityPy.enums import ClassIDType
 
+# LOCALAPPDATA on Windows, XDG config directory elsewhere.
+# Same formula as VALHEIM_CONFIG_PATH; duplicated so that subscripts
+# stays free of any ui import.
 ITEM_DATABASE_PATH = (
-    Path.home()
-    / "AppData"
-    / "Local"
+    Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".config")
     / "VikingEditor"
     / "valheim_items.json"
 )

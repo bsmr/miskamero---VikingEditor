@@ -1,0 +1,105 @@
+name: Bug report
+description: Report a reproducible problem with VikingEditor
+title: "[Bug]: "
+labels:
+  - bug
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug!
+
+        Please provide as much information as possible so the problem can be reproduced and investigated.
+
+  - type: input
+    id: version
+    attributes:
+      label: VikingEditor version
+      description: Which version of VikingEditor are you using?
+      placeholder: "e.g. v1.0.2"
+    validations:
+      required: true
+
+  - type: input
+    id: operating_system
+    attributes:
+      label: Operating system
+      description: Which operating system are you using?
+      placeholder: "e.g. Windows 11 24H2, Ubuntu 24.04"
+    validations:
+      required: true
+
+  - type: input
+    id: valheim_version
+    attributes:
+      label: Valheim version
+      description: If relevant, which version of Valheim are you using?
+      placeholder: "e.g. 0.221.12"
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Briefly describe what went wrong.
+      placeholder: Tell us what happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide the steps needed to reproduce the problem.
+      placeholder: |
+        1. Open VikingEditor
+        2. Open a character
+        3. Change ...
+        4. Click ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+      placeholder: I expected...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+      placeholder: Instead...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error messages or logs
+      description: If applicable, paste relevant error messages or logs here.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: If applicable, drag and drop screenshots here.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional_information
+    attributes:
+      label: Additional information
+      description: Add anything else that may help reproduce or understand the problem.
+    validations:
+      required: false

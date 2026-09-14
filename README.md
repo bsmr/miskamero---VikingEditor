@@ -416,19 +416,12 @@ are intentionally outside the scope of this application.
 
 ## Contributing
 
-Contributions are welcome!
+Contributions, bug reports, and feature suggestions are welcome!
 
-Please submit a pull request or open an issue on the GitHub repository.
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 
-If you contribute code, please try to:
-
-* Follow the existing project structure.
-* Keep changes focused.
-* Document non-obvious code.
-* Avoid unnecessary changes to unrelated components.
-* Test changes with both the editor and Valheim where applicable.
-
-VikingEditor is maintained by a single developer, so responses to issues and pull requests may not always be immediate.
+- [Report a bug](https://github.com/miskamero/VikingEditor/issues/new?template=bug_report.yml)
+- [Request a feature](https://github.com/miskamero/VikingEditor/issues/new?template=feature_request.yml)
 
 ---
 
