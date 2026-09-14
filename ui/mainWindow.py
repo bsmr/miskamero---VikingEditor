@@ -30,7 +30,8 @@ from ui.valheim_detection import (
     load_saved_valheim_path,
     save_valheim_path,
     load_config,
-    save_config
+    save_config,
+    get_valheim_character_save_directory
 )
 
 from subscripts.fchUtil import (
@@ -599,12 +600,32 @@ class MainWindow(QMainWindow):
                 f"Could not create the new character:\n\n{e}"
             )
 
+    def last_save_dir(self) -> str:
+        """Directory the file dialogs should start in."""
+
+        remembered = self.config.get("last_save_dir", "").strip()
+
+        if remembered and Path(remembered).is_dir():
+            return remembered
+
+        return str(get_valheim_character_save_directory())
+
+    def remember_save_dir(self, filename):
+        self.config["last_save_dir"] = str(Path(filename).parent)
+
+        save_config(self.config)
+
     def open_save_file(self):
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Open Valheim Character Save", "", "Valheim Character (*.fch)"
+            self,
+            "Open Valheim Character Save",
+            self.last_save_dir(),
+            "Valheim Character (*.fch)"
         )
         if not filename:
             return
+
+        self.remember_save_dir(filename)
 
         try:
             # 1. Unpack container
@@ -651,7 +672,9 @@ class MainWindow(QMainWindow):
         if not char_name:
             char_name = "Viking"
 
-        default_filename = f"{char_name}_decompiled.json"
+        default_filename = str(
+            Path(self.last_save_dir()) / f"{char_name}_decompiled.json"
+        )
 
         filename, _ = QFileDialog.getSaveFileName(
             self,
@@ -662,6 +685,8 @@ class MainWindow(QMainWindow):
 
         if not filename:
             return
+
+        self.remember_save_dir(filename)
 
         try:
             export_data = dict(self.root_save)
