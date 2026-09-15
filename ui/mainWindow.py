@@ -601,8 +601,6 @@ class MainWindow(QMainWindow):
             )
 
     def last_save_dir(self) -> str:
-        """Directory the file dialogs should start in."""
-
         remembered = self.config.get("last_save_dir", "").strip()
 
         if remembered and Path(remembered).is_dir():

@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory() as tmp:
     original = mw.save_config
     mw.save_config = saved.update
     try:
-        remember_save_dir(obj, str(Path(tmp) / "usco.fch"))
+        remember_save_dir(obj, str(Path(tmp) / "klinoff.fch"))
     finally:
         mw.save_config = original
     assert obj.config["last_save_dir"] == tmp
